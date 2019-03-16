@@ -5,6 +5,29 @@
 
 #include "stdafx.h"
 
+typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
+
+pcl_ptr pointsToPCL(const rs2::points& points)
+{
+	pcl_ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+	auto sp = points.get_profile().as<rs2::video_stream_profile>();
+	cloud->width = sp.width();
+	cloud->height = sp.height();
+	cloud->is_dense = false;
+	cloud->points.resize(points.size());
+	auto ptr = points.get_vertices();
+	for (auto& p : cloud->points)
+	{
+		p.x = ptr->x;
+		p.y = ptr->y;
+		p.z = ptr->z;
+		ptr++;
+	}
+
+	return cloud;
+}
+
 // The program logic for the aruco module testing happens here
 int arucoTest()
 {
@@ -68,7 +91,7 @@ int arucoTest()
 }
 
 // The program logic for the pointcloud module testing happens here
-int pointcloudExportTest()
+int pointCloudExportTest()
 {
 	try
 	{
@@ -158,15 +181,88 @@ int pointcloudExportTest()
 
 }
 
+int pointCloudVisualize()
+{
+	try
+	{
+		// Declare pointcloud object, for calculating pointclouds and texture mappings
+		rs2::pointcloud pc;
+		// We want the points object to be persistent so we can display the last cloud when a frame drops
+		// The currPoints variable will be used to store the current frame on display that the user will save
+		rs2::points points, currPoints;
+
+		// The color mapper will have the pointcloud in real, 3D points copied to it
+		// the depth mapper will have the pointcloud in regular stereo/depth points copied to it
+		rs2::frame colorMapper, depthMapper;
+
+		// Declare RealSense pipeline, encapsulating the actual device and sensors
+		rs2::pipeline pipe;
+
+		// Map color to depth frames
+		rs2::colorizer color_map;
+
+		rs2::config cfg; // Going to create a custom configuration for our stream (mostly to have bigger frame dimensions)
+		cfg.enable_stream(RS2_STREAM_COLOR, 0, 640, 480, rs2_format::RS2_FORMAT_RGB8, 15);
+		cfg.enable_stream(RS2_STREAM_DEPTH, 0, 640, 480, rs2_format::RS2_FORMAT_Z16, 15);
+
+		// Start streaming with default recommended configuration
+		pipe.start(cfg);
+
+		//... populate cloud
+		pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
+		
+
+		while (!viewer.wasStopped())
+		{
+			// Wait for the next set of frames from the camera
+			rs2::frameset frames = pipe.wait_for_frames();
+			rs2::frame depth = frames.get_depth_frame();
+			rs2::frame color = frames.get_color_frame();
+
+
+			// Generate the pointcloud and texture mappings
+			points = pc.calculate(depth);
+
+			// Map the RGB texture to the points
+			pc.map_to(depth);
+
+			// Copy the points and color frame to the pointcloud that we will be exporting
+			currPoints = points;
+
+			// Copy the color frames
+			colorMapper = color;
+
+			// Copy the depth frames, but after colorizing it so it looks pretty
+			depth = depth.apply_filter(color_map);
+			depthMapper = depth;
+
+			viewer.showCloud(pointsToPCL(points));
+		}
+			
+	}
+	catch (const rs2::error & e)
+	{
+		std::cout << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+	catch (const std::exception & e)
+	{
+		std::cerr << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+
+}
+
 // main program entry
 int main()
 {
 	std::string userInput = "";
 
 	rs2::device camera = DeviceWrapper::getADevice();
-	DeviceWrapper::setDepthTable(camera);
+	//DeviceWrapper::setDepthTable(camera);
 	std::cout << "Input 1 for AruCo test program" << std::endl;
 	std::cout << "Input 2 to test exporting pointcloud of a frame to .ply file" << std::endl;
+	std::cout << "Input 3 to test pointcloud visualization" << std::endl;
 
 	// get user input
 	while (std::getline(std::cin, userInput))
@@ -177,7 +273,11 @@ int main()
 		}
 		else if (userInput == "2")
 		{
-			return pointcloudExportTest();
+			return pointCloudExportTest();
+		}
+		else if (userInput == "3")
+		{
+			return pointCloudVisualize();
 		}
 		else
 		{
