@@ -15,15 +15,24 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/visualization/cloud_viewer.h>
+#include <pcl/common/transforms.h>
 
 #include <stdio.h>
 #include <tchar.h>
 #include <string>
 #include <iostream>
+#include <algorithm>
+#include <chrono>
+#include <mutex>
+#include <cmath>
+#include <map>
+#include <vector>
 
 #include "Marker.h"
 #include "DeviceWrapper.h"
 #include "targetver.h"
 
+typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
+typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;
 
 // TODO: reference additional headers your program requires here
