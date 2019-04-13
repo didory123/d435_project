@@ -2,8 +2,8 @@
 // 2019/01/08
 // Simple console app for detecting markers from real-time frames from the Intel Realsense D435 camera
 //
-
 #include "stdafx.h"
+
 
 //======================================================
 // RGB Texture
@@ -267,6 +267,54 @@ int pointCloudExportTest()
 
 }
 
+Eigen::Matrix4d getTransformMatrix(cv::Vec3d rotationVector, cv::Vec3d translationVector)
+{
+	/* Reminder: how transformation matrices work :
+
+	|-------> This column is the translation
+	| 1 0 0 x |  \
+	| 0 1 0 y |   }-> The identity 3x3 matrix (no rotation) on the left
+	| 0 0 1 z |  /
+	| 0 0 0 1 |    -> We do not use this line (and it has to stay 0,0,0,1)
+
+	METHOD #1: Using a Matrix4f
+	This is the "manual" method, perfect to understand but error prone !
+	*/
+	cv::Mat rmat;
+	// OpenCV estimate pose functions give us the rotation vector, not matrix
+	// https://docs.opencv.org/3.4.3/d9/d0c/group__calib3d.html#ga61585db663d9da06b68e70cfbf6a1eac
+	// Convert the 3x1 vector to 3x3 matrix in order to perform our transformations on the pointcloud
+	cv::Rodrigues(rotationVector, rmat, cv::noArray());
+
+	Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
+	for (int i = 0; i < 3; i++)
+	{
+		for (int j = 0; j < 3; j++)
+		{
+			transformMatrix(i, j) = rmat.at<double>(i, j);
+		}
+	}
+	transformMatrix(0, 3) = translationVector[0];
+	transformMatrix(1, 3) = translationVector[1];
+	transformMatrix(2, 3) = translationVector[2];
+
+	return transformMatrix;
+}
+
+pcl_color_ptr affineTransformMatrix(const pcl_color_ptr& source_cloud, Eigen::Matrix4d transformMat)
+{
+
+	// The same rotation matrix as before; theta radians around Z axis
+	//transform_2.rotate(Eigen::AngleAxisf(theta, axis));
+
+	// Executing the transformation
+	pcl_color_ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
+	// You can either apply transform_1 or transform_2; they are the same
+	pcl::transformPointCloud(*source_cloud, *transformed_cloud, transformMat);
+
+	return transformed_cloud;
+}
+
 pcl_color_ptr affineTransformRotate(const pcl_color_ptr& source_cloud, Eigen::Vector3f::BasisReturnType axis, float theta = M_PI)
 {
 
@@ -274,9 +322,6 @@ pcl_color_ptr affineTransformRotate(const pcl_color_ptr& source_cloud, Eigen::Ve
 	This method is easier and less error prone
 	*/
 	Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
-
-	// Define a translation of 2.5 meters on the x axis.
-	transform_2.translation() << 0.0, 0.0, 0.0;
 
 	// The same rotation matrix as before; theta radians around Z axis
 	transform_2.rotate(Eigen::AngleAxisf(theta, axis));
@@ -472,12 +517,9 @@ int multiCamVisualize()
 {
 	try
 	{
-
 		DeviceWrapper connected_devices;
 
 		rs2::context ctx;    // Create librealsense context for managing devices
-		rs2::config cfg; // Going to create a custom configuration for our stream (mostly to have bigger frame dimensions)
-		cfg.enable_stream(RS2_STREAM_DEPTH, 0, 1280, 720, rs2_format::RS2_FORMAT_Z16, 30);
 		ctx.set_devices_changed_callback([&](rs2::event_information& info)
 		{
 			connected_devices.removeDevices(info);
@@ -510,7 +552,7 @@ int multiCamVisualize()
 		viewer->setBackgroundColor(0, 0, 0);
 		// 0.1 is the scale of the coordinate axes markers
 		// global coordinate system
-		viewer->addCoordinateSystem(0.1, "global");
+		viewer->addCoordinateSystem(0.1, "global"); 
 		std::vector<pcl_color_ptr> allPointClouds;
 
 		// Initial population of the device list
@@ -690,6 +732,7 @@ int HWSyncTest()
 	}
 
 	for (auto& t : threads) t.join(); // Must join / detach all threads
+	return 0;
 }
 
 int checkMode()
@@ -714,6 +757,635 @@ int checkMode()
 	return std::getchar();
 	
 }
+
+int charucoCalibration()
+{
+	using namespace cv;
+	try
+	{
+		//------------------------------------------------------------------------------
+		//------------------------- OpenCV Setup ---------------------------------------
+		//------------------------------------------------------------------------------
+		// Create a simple window for displaying image, handy tool from openCV
+		const auto window_name = "Charuco Calibration With Intel Realsense";
+		cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+
+		// Create dictionary object from specific aruco library set
+		Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(cv::aruco::DICT_6X6_250));
+
+		// The data from each frame will be stored here
+		std::vector< std::vector< std::vector< Point2f > > > allCorners;
+		std::vector< std::vector< int > > allIds;
+		std::vector< Mat > allImgs;
+		Size imgSize;
+
+		// create charuco board object
+		// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
+		Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.032, 0.019, dictionary);
+		Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
+
+		//------------------------------------------------------------------------------
+		//------------------------- Intel Camera Setup ---------------------------------
+		//------------------------------------------------------------------------------
+		rs2::pipeline pipe; // Declare RealSense pipeline, encapsulating the actual device and sensors
+		rs2::config cfg; // Going to create a custom configuration for our stream (mostly to have bigger frame dimensions)
+
+						 // Create custom configuration; more detailed documentation about this will be in a separate file
+						 // A custom configuration is used for this example app only, because Intel can give us camera intrinsic parameters for each
+						 // stream setting rather than me having to do custom calibration. For this example app I will use 1280x720 RGB8 30Hz settings
+		cfg.enable_stream(RS2_STREAM_COLOR, 0, 1280, 720, rs2_format::RS2_FORMAT_BGR8, 30);
+		cfg.enable_stream(RS2_STREAM_DEPTH, 0, 1280, 720, rs2_format::RS2_FORMAT_Z16, 30);
+
+		// Our camera calibration paramters for the above setting:
+		//cv::Mat cameraMatrix = (cv::Mat1d(3, 3) << 919.675, 0, 646.346, 0, 920.087, 355.558, 0, 0, 1);
+
+		pipe.start(cfg); // Start streaming with default recommended configuration
+
+
+		//------------------------------------------------------------------------------
+		//------------------------- Main Camera loop -----------------------------------
+		//------------------------------------------------------------------------------
+		while (1) {
+			rs2::frameset data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
+			rs2::frame rgb = data.get_color_frame(); // Get RGB frames
+
+			// Query frame size (width and height)
+			const int w = rgb.as<rs2::video_frame>().get_width();
+			const int h = rgb.as<rs2::video_frame>().get_height();
+
+			// Create OpenCV matrix of size (w,h) from the colorized depth data
+			cv::Mat image(cv::Size(w, h), CV_8UC3, (void*)rgb.get_data(), cv::Mat::AUTO_STEP);
+			cv::Mat imageCopy;
+
+			// This step needs to be done because for some reason OpenCV's convention of RGB is backwards (BGR instead of RGB) so colors will be inverted if this is skipped
+			//cv::cvtColor(image, image, cv::ColorConversionCodes::COLOR_RGB2BGR);
+
+			// Update the window with new data
+			cv::imshow(window_name, image);
+
+			std::vector< int > ids;
+			std::vector< std::vector< Point2f > > corners, rejected;
+
+			// detect markers	
+			aruco::detectMarkers(image, dictionary, corners, ids);
+
+			// interpolate charuco corners
+			Mat currentCharucoCorners, currentCharucoIds;
+
+			if (ids.size() > 0)
+				aruco::interpolateCornersCharuco(corners, ids, image, charucoboard, currentCharucoCorners, currentCharucoIds);
+
+			// draw results
+			image.copyTo(imageCopy);
+			if (ids.size() > 0) aruco::drawDetectedMarkers(imageCopy, corners);
+
+			if (currentCharucoCorners.total() > 0)
+				aruco::drawDetectedCornersCharuco(imageCopy, currentCharucoCorners, currentCharucoIds);
+
+			putText(imageCopy, "Press 'c' to add current frame. 'ESC' to finish and calibrate",
+				Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0), 2);
+			putText(imageCopy, "At least 4 frames needed for calibration. Current count: " + std::to_string(allImgs.size()),
+				Point(10, 40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0), 2);
+			imshow(window_name, imageCopy);
+			char key = (char)waitKey(10);
+			if (key == 27) break;
+			if (key == 'c' && ids.size() > 0) {
+				cout << "Frame captured" << endl;
+				allCorners.push_back(corners);
+				allIds.push_back(ids);
+				// For some reason, the openCV dll throws an error in the interpolateCharucoCorners function below when trying to
+				// convert an image to grayscale if it's stored in an array. We preemptively convert it here when we have full access
+				// to our image, so that the dll doesn't even bother trying to do the grayscale conversion function and throw an error
+				cv::cvtColor(image, image, cv::ColorConversionCodes::COLOR_BGR2GRAY);
+				allImgs.push_back(image);
+				imgSize = image.size();
+			}
+		}
+
+		// stop pipe
+		pipe.stop();
+
+		// Check there was at least 1 capture
+		if (allIds.size() < 1) {
+			cerr << "Not enough captures for calibration" << endl;
+			return 0;
+		}
+
+		Mat cameraMatrix, distCoeffs;
+		std::vector< Mat > rvecs, tvecs;
+		double repError;
+
+		// prepare data for calibration
+		std::vector< std::vector< Point2f > > allCornersConcatenated;
+		std::vector< int > allIdsConcatenated;
+		std::vector< int > markerCounterPerFrame;
+		markerCounterPerFrame.reserve(allCorners.size());
+		for (unsigned int i = 0; i < allCorners.size(); i++) {
+			markerCounterPerFrame.push_back((int)allCorners[i].size());
+			for (unsigned int j = 0; j < allCorners[i].size(); j++) {
+				allCornersConcatenated.push_back(allCorners[i][j]);
+				allIdsConcatenated.push_back(allIds[i][j]);
+			}
+		}
+
+		// calibrate camera using aruco markers
+		double arucoRepErr;
+		arucoRepErr = aruco::calibrateCameraAruco(allCornersConcatenated, allIdsConcatenated,
+			markerCounterPerFrame, board, imgSize, cameraMatrix,
+			distCoeffs, noArray(), noArray(), 0);
+
+		// prepare data for charuco calibration
+		int nFrames = (int)allCorners.size();
+		std::vector< Mat > allCharucoCorners;
+		std::vector< Mat > allCharucoIds;
+		std::vector< Mat > filteredImages;
+		allCharucoCorners.reserve(nFrames);
+		allCharucoIds.reserve(nFrames);
+
+		for (int i = 0; i < nFrames; i++) {
+			// interpolate using camera parameters
+			Mat currentCharucoCorners, currentCharucoIds;
+			aruco::interpolateCornersCharuco(allCorners[i], allIds[i], allImgs[i], charucoboard, currentCharucoCorners, currentCharucoIds);
+			allCharucoCorners.push_back(currentCharucoCorners);
+			allCharucoIds.push_back(currentCharucoIds);
+			filteredImages.push_back(allImgs[i]);
+		}
+
+		if (allCharucoCorners.size() < 4) {
+			cerr << "Not enough corners for calibration" << endl;
+			return 0;
+		}
+
+		// calibrate camera using charuco
+		repError =
+			aruco::calibrateCameraCharuco(allCharucoCorners, allCharucoIds, charucoboard, imgSize,
+				cameraMatrix, distCoeffs, rvecs, tvecs, 0);
+
+		// Print results
+		cout << "Rep Error: " << repError << endl;
+		cout << "Rep Error Aruco: " << arucoRepErr << endl;
+		cout << "Camera Matrix" << cameraMatrix << endl;
+		cout << "Distortion Coefficients" << distCoeffs << endl;
+		cout << "Rotation" << endl;
+		for (auto r : rvecs)
+		{
+			cout << r << endl;
+		}
+		cout << "Translation" << endl;
+		for (auto t : tvecs)
+		{
+			cout << t << endl;
+		}
+		
+		// close openCV window
+		cv::destroyAllWindows();
+
+		//------------------------------------------------------------------------------
+		//------------------------- PCL Visualization ----------------------------------
+		//------------------------------------------------------------------------------
+		// Declare pointcloud object, for calculating pointclouds and texture mappings
+		rs2::pointcloud pc;
+		// We want the points object to be persistent so we can display the last cloud when a frame drops
+		// The currPoints variable will be used to store the current frame on display that the user will save
+		rs2::points points, currPoints;
+
+		// The color mapper will have the pointcloud in real, 3D points copied to it
+		// the depth mapper will have the pointcloud in regular stereo/depth points copied to it
+		rs2::frame colorMapper, depthMapper;
+
+		// Map color to depth frames
+		rs2::colorizer color_map;
+
+		pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
+
+		pipe.start(cfg);
+
+
+		Eigen::Matrix4f transform_2 = Eigen::Matrix4f::Identity();
+		Mat M(100, 100, CV_64F);
+		cout << M.at<double>(0, 0);
+		while (!viewer.wasStopped())
+		{
+			// Wait for the next set of frames from the camera
+			rs2::frameset frames = pipe.wait_for_frames();
+			rs2::frame depth = frames.get_depth_frame();
+			rs2::frame color = frames.get_color_frame();
+
+			// Generate the pointcloud and texture mappings
+			points = pc.calculate(depth);
+
+			// Map the RGB texture to the points
+			pc.map_to(depth);
+
+			// Copy the points and color frame to the pointcloud that we will be exporting
+			currPoints = points;
+
+			// Copy the depth frames, but after colorizing it so it looks pretty
+			depth = depth.apply_filter(color_map);
+			pcl_color_ptr colorCloud = pointsToColorPCL(points, depth);
+			colorCloud = affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
+			colorCloud = affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
+			viewer.showCloud(colorCloud);
+		}
+
+		return EXIT_SUCCESS;
+	}
+	catch (const rs2::error & e)
+	{
+		std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+}
+
+int project3D()
+{
+	using namespace cv;
+	try
+	{
+		//------------------------------------------------------------------------------
+		//------------------------- OpenCV Setup ---------------------------------------
+		//------------------------------------------------------------------------------
+		// Create a simple window for displaying image, handy tool from openCV
+		const auto window_name = "Charuco Calibration With Intel Realsense";
+		cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+
+		// Create dictionary object from specific aruco library set
+		Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(cv::aruco::DICT_6X6_250));
+
+		// The data from each frame will be stored here
+		std::vector< std::vector< std::vector< Point2f > > > allCorners;
+		std::vector< std::vector< int > > allIds;
+		std::vector< Mat > allImgs;
+		Size imgSize;
+		Vec3d rvec, tvec;
+
+		// create charuco board object
+		// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
+		Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.032, 0.019, dictionary);
+		Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
+
+		cv::Mat cameraMatrix = (cv::Mat1d(3, 3) << 919.675, 0, 646.346, 0, 920.087, 355.558, 0, 0, 1);
+		cv::Mat distortionCoefficients = (cv::Mat1d(1, 5) << 0, 0, 0, 0, 0);
+
+		//------------------------------------------------------------------------------
+		//------------------------- Intel Camera Setup ---------------------------------
+		//------------------------------------------------------------------------------
+		rs2::pipeline pipe; // Declare RealSense pipeline, encapsulating the actual device and sensors
+		rs2::config cfg; // Going to create a custom configuration for our stream (mostly to have bigger frame dimensions)
+
+						 // Create custom configuration; more detailed documentation about this will be in a separate file
+						 // A custom configuration is used for this example app only, because Intel can give us camera intrinsic parameters for each
+						 // stream setting rather than me having to do custom calibration. For this example app I will use 1280x720 RGB8 30Hz settings
+		cfg.enable_stream(RS2_STREAM_COLOR, 0, 1280, 720, rs2_format::RS2_FORMAT_BGR8, 30);
+		cfg.enable_stream(RS2_STREAM_DEPTH, 0, 1280, 720, rs2_format::RS2_FORMAT_Z16, 30);
+
+		// Our camera calibration paramters for the above setting:
+		//cv::Mat cameraMatrix = (cv::Mat1d(3, 3) << 919.675, 0, 646.346, 0, 920.087, 355.558, 0, 0, 1);
+
+		pipe.start(cfg); // Start streaming with default recommended configuration
+
+
+						 //------------------------------------------------------------------------------
+						 //------------------------- Main Camera loop -----------------------------------
+						 //------------------------------------------------------------------------------
+		while (cv::waitKey(1) < 0) {
+			rs2::frameset data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
+			rs2::frame rgb = data.get_color_frame(); // Get RGB frames
+
+													 // Query frame size (width and height)
+			const int w = rgb.as<rs2::video_frame>().get_width();
+			const int h = rgb.as<rs2::video_frame>().get_height();
+
+			// Create OpenCV matrix of size (w,h) from the colorized depth data
+			cv::Mat image(cv::Size(w, h), CV_8UC3, (void*)rgb.get_data(), cv::Mat::AUTO_STEP);
+			cv::Mat imageCopy;
+
+			// This step needs to be done because for some reason OpenCV's convention of RGB is backwards (BGR instead of RGB) so colors will be inverted if this is skipped
+			//cv::cvtColor(image, image, cv::ColorConversionCodes::COLOR_RGB2BGR);
+
+			// Update the window with new data
+			cv::imshow(window_name, image);
+
+			std::vector< int > markerIds;
+			std::vector< std::vector< Point2f > > corners;
+			// detect markers	
+			aruco::detectMarkers(image, dictionary, corners, markerIds);
+
+			// interpolate charuco corners
+			std::vector< Point2f > currentCharucoCorners;
+			std::vector<int> currentCharucoIds;
+			int interpolatedCorners = 0;
+			if (markerIds.size() > 0)
+				interpolatedCorners = aruco::interpolateCornersCharuco(corners, markerIds, image, charucoboard, currentCharucoCorners, currentCharucoIds, cameraMatrix, distortionCoefficients);
+
+			// estimate charuco board pose
+			aruco::estimatePoseCharucoBoard(currentCharucoCorners, currentCharucoIds, charucoboard,
+					cameraMatrix, distortionCoefficients, rvec, tvec);
+
+			// draw results
+			image.copyTo(imageCopy);
+
+			// draw aruco markers
+			if (markerIds.size() > 0)
+			{
+				aruco::drawDetectedMarkers(imageCopy, corners);
+			}
+			// draw things
+			if (interpolatedCorners > 0)
+			{
+				// draw corners
+				aruco::drawDetectedCornersCharuco(imageCopy, currentCharucoCorners, currentCharucoIds);
+				// draw pose
+				aruco::drawAxis(imageCopy, cameraMatrix, distortionCoefficients, rvec, tvec, 0.05);
+			}
+
+			cv::imshow(window_name, imageCopy);
+		}
+
+		// stop pipe
+		pipe.stop();
+
+		// close openCV window
+		//cv::destroyAllWindows();
+
+		//------------------------------------------------------------------------------
+		//------------------------- PCL Visualization ----------------------------------
+		//------------------------------------------------------------------------------
+		// Declare pointcloud object, for calculating pointclouds and texture mappings
+		rs2::pointcloud pc;
+		// We want the points object to be persistent so we can display the last cloud when a frame drops
+		// The currPoints variable will be used to store the current frame on display that the user will save
+		rs2::points points, currPoints;
+
+		// The color mapper will have the pointcloud in real, 3D points copied to it
+		// the depth mapper will have the pointcloud in regular stereo/depth points copied to it
+		rs2::frame colorMapper, depthMapper;
+
+		// Map color to depth frames
+		rs2::colorizer color_map;
+
+		pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
+
+		pipe.start(cfg);
+
+
+		/* Reminder: how transformation matrices work :
+
+		|-------> This column is the translation
+		| 1 0 0 x |  \
+		| 0 1 0 y |   }-> The identity 3x3 matrix (no rotation) on the left
+		| 0 0 1 z |  /
+		| 0 0 0 1 |    -> We do not use this line (and it has to stay 0,0,0,1)
+
+		METHOD #1: Using a Matrix4f
+		This is the "manual" method, perfect to understand but error prone !
+		*/
+		cv::Mat rmat;
+		// OpenCV estimate pose functions give us the rotation vector, not matrix
+		// https://docs.opencv.org/3.4.3/d9/d0c/group__calib3d.html#ga61585db663d9da06b68e70cfbf6a1eac
+		// Convert the 3x1 vector to 3x3 matrix in order to perform our transformations on the pointcloud
+		cv::Rodrigues(rvec, rmat, noArray());
+
+		Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
+		for (int i = 0; i < 3; i++)
+		{
+			for (int j = 0; j < 3; j++)
+			{
+				transformMatrix(i, j) = rmat.at<double>(i, j);
+			}
+		}
+		transformMatrix(0, 3) = tvec[0];
+		transformMatrix(1, 3) = tvec[1];
+		transformMatrix(2, 3) = tvec[2];
+
+		while (!viewer.wasStopped())
+		{
+			// Wait for the next set of frames from the camera
+			rs2::frameset frames = pipe.wait_for_frames();
+			rs2::frame depth = frames.get_depth_frame();
+			rs2::frame color = frames.get_color_frame();
+
+			// Generate the pointcloud and texture mappings
+			points = pc.calculate(depth);
+
+			// Map the RGB texture to the points
+			pc.map_to(depth);
+
+			// Copy the points and color frame to the pointcloud that we will be exporting
+			currPoints = points;
+
+			// Copy the depth frames, but after colorizing it so it looks pretty
+			depth = depth.apply_filter(color_map);
+			pcl_color_ptr colorCloud = pointsToColorPCL(points, depth);
+			colorCloud = affineTransformMatrix(colorCloud, transformMatrix);
+			viewer.showCloud(colorCloud);
+		}
+
+		return EXIT_SUCCESS;
+	}
+	catch (const rs2::error & e)
+	{
+		std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+}
+
+int project3DMultiple()
+{
+	using namespace cv;
+	try
+	{
+		 
+		//------------------------------------------------------------------------------
+		//------------------------- OpenCV Setup ---------------------------------------
+		//------------------------------------------------------------------------------
+		// Create a simple window for displaying image, handy tool from openCV
+		const auto window_name = "Charuco Calibration With Intel Realsense";
+		cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+
+		// Create dictionary object from specific aruco library set
+		Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(cv::aruco::DICT_6X6_250));
+
+		// create charuco board object
+		// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
+		Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.032, 0.019, dictionary);
+		Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
+
+		DeviceWrapper connected_devices;
+
+		rs2::context ctx;    // Create librealsense context for managing devices
+		ctx.set_devices_changed_callback([&](rs2::event_information& info)
+		{
+			connected_devices.removeDevices(info);
+			for (auto&& dev : info.get_new_devices())
+			{
+				connected_devices.enableDevice(dev);
+			}
+		});
+
+		// Initial population of the device list
+		for (auto&& dev : ctx.query_devices()) // Query the list of connected RealSense devices
+		{
+			connected_devices.enableDevice(dev);
+
+		}
+		cv::Mat distortionCoefficients = (cv::Mat1d(1, 5) << 0, 0, 0, 0, 0);
+		std::vector<cv::Mat> cameraMatrices = connected_devices.getCameraMatrices();
+		std::vector<Vec3d> rotationVectors, translationVectors;
+		
+						 //------------------------------------------------------------------------------
+						 //------------------------- Main Camera loop -----------------------------------
+						 //------------------------------------------------------------------------------
+		while (1) {
+			
+			connected_devices.pollFrames();
+
+			Vec3d rvec, tvec;
+			std::vector<Vec3d> rvecs, tvecs;
+
+			std::vector<rs2::frame> colorFrames = connected_devices.getColorFrames();
+			std::vector<cv::Mat> images;
+			for (int i = 0; i < colorFrames.size(); i++)
+			{
+				const int w = colorFrames[i].as<rs2::video_frame>().get_width();
+				const int h = colorFrames[i].as<rs2::video_frame>().get_height();
+				cv::Mat image(cv::Size(w, h), CV_8UC3, (void*)colorFrames[i].get_data(), cv::Mat::AUTO_STEP);
+				cv::Mat imageCopy;
+
+				std::vector< int > markerIds;
+				std::vector< std::vector< Point2f > > corners;
+				// detect markers	
+				aruco::detectMarkers(image, dictionary, corners, markerIds);
+
+				// interpolate charuco corners
+				std::vector< Point2f > currentCharucoCorners;
+				std::vector<int> currentCharucoIds;
+				int interpolatedCorners = 0;
+				if (markerIds.size() > 0)
+					interpolatedCorners = aruco::interpolateCornersCharuco(corners, markerIds, image, 
+						charucoboard, currentCharucoCorners, currentCharucoIds, cameraMatrices[i], distortionCoefficients);
+
+				// estimate charuco board pose
+				aruco::estimatePoseCharucoBoard(currentCharucoCorners, currentCharucoIds, charucoboard,
+					cameraMatrices[i], distortionCoefficients, rvec, tvec);
+
+				// draw results
+				image.copyTo(imageCopy);
+
+				// draw aruco markers
+				if (markerIds.size() > 0)
+				{
+					aruco::drawDetectedMarkers(imageCopy, corners);
+				}
+				// draw things
+				if (interpolatedCorners > 0)
+				{
+					// draw corners
+					aruco::drawDetectedCornersCharuco(imageCopy, currentCharucoCorners, currentCharucoIds);
+					// draw pose
+					aruco::drawAxis(imageCopy, cameraMatrices[i], distortionCoefficients, rvec, tvec, 0.05);
+				}
+				rvecs.push_back(rvec);
+				tvecs.push_back(tvec);
+				images.push_back(imageCopy);
+				
+			}
+			if (images.size() > 0)
+			{
+				//cv::imshow(window_name, images[0]);
+				cv::Mat combinedImage;
+				cv::hconcat(images, combinedImage);
+				cv::imshow(window_name, combinedImage);
+			}
+			char key = (char)waitKey(10);
+			if (key == 27)
+			{
+				if (rvecs.size() > 0 && tvecs.size() > 0)
+				{
+					rotationVectors = rvecs;
+					translationVectors = tvecs;
+				}
+				break;
+			}
+		}
+		cv::destroyAllWindows();
+		//... populate cloud
+		pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+		viewer->initCameraParameters();
+
+		
+		pcl_color_ptr right(new pcl::PointCloud<pcl::PointXYZRGB>);
+		//pcl::visualization::CloudViewer viewer2("Simple Cloud Viewer");
+
+		for (int i = 0; i < rotationVectors.size(); i++)
+		{
+			pcl_color_ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+			viewer->addPointCloud<pcl::PointXYZRGB>(cloud, std::to_string(i));
+		}
+
+		// 0.1 is the scale of the coordinate axes markers
+		// global coordinate system
+		//viewer->addCoordinateSystem(0.1);
+		viewer->addCoordinateSystem(0.1, "global");
+
+		while (!viewer->wasStopped())
+		{
+			connected_devices.pollFrames();
+			//const int w = color.as<rs2::video_frame>().get_width();
+			//const int h = color.as<rs2::video_frame>().get_height();
+
+			// Copy the depth frames, but after colorizing it so it looks pretty
+			std::vector<std::pair<rs2::points, rs2::frame>> pointClouds = connected_devices.getPointClouds();
+			std::vector<double> timestamps;
+			for (int i = 0; i < pointClouds.size(); i++)
+			{
+				rs2::points points = pointClouds[i].first;
+				rs2::frame depth = pointClouds[i].second;
+				timestamps.push_back(depth.get_timestamp());
+				pcl_color_ptr colorCloud = pointsToColorPCL(points, depth);
+				colorCloud = affineTransformMatrix(colorCloud, (getTransformMatrix(rotationVectors[i], translationVectors[i])).inverse());
+				colorCloud = affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
+				// Copy the depth frames, but after colorizing it so it looks pretty
+				//rs2_timestamp_domain dom = depth.get_frame_timestamp_domain();
+				//std::cout << rs2_timestamp_domain_to_string(dom) << std::endl
+				viewer->updatePointCloud(colorCloud, std::to_string(i));
+				//test.export_to_ply("exportDepth.ply", depth);
+			}
+
+			if (timestamps.size() >= 2)
+			{
+				double drift = timestamps[1] - timestamps[0];
+
+				viewer->updateText(std::to_string(drift), 10, 10, "drift");
+			}
+			if (timestamps.size() < 2)
+			{
+				std::cout << "?" << std::endl;
+			}
+			viewer->spinOnce();
+		}
+	}
+	catch (const rs2::error & e)
+	{
+		std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
+}
 // main program entry
 int main()
 {
@@ -728,6 +1400,8 @@ int main()
 	std::cout << "Input 5 to test multi-camera pointcloud visualization" << std::endl;
 	std::cout << "Input 6 to test hardware sync" << std::endl;
 	std::cout << "Input 7 to test intercam hw sync availability" << std::endl;
+	std::cout << "Input 8 to test charuco calibration" << std::endl;
+	std::cout << "Input 9 to test mapping 3D pointcloud to real world coordinates" << std::endl;
 	// get user input
 	while (std::getline(std::cin, userInput))
 	{	
@@ -758,6 +1432,14 @@ int main()
 		else if (userInput == "7")
 		{
 			return checkMode();
+		}
+		else if (userInput == "8")
+		{
+			return charucoCalibration();
+		}
+		else if (userInput == "9")
+		{
+			return project3DMultiple();
 		}
 		else
 		{

@@ -10,6 +10,7 @@ class DeviceWrapper
 		rs2::pipeline_profile profile;
 		rs2::points pointCloud;
 		rs2::frame depthFrame;
+		rs2::frame colorFrame;
 	};
 public:
 
@@ -25,6 +26,9 @@ public:
 
 	void pollFrames();
 
+	std::vector<rs2::frame> getColorFrames();
+
+	std::vector<cv::Mat> getCameraMatrices();
 	/*void render_textures(int cols, int rows, float view_width, float view_height)
 	{
 		std::lock_guard<std::mutex> lock(_mutex);
