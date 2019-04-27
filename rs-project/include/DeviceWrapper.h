@@ -1,4 +1,5 @@
 #pragma once
+struct stream_profile_detail;
 class DeviceWrapper
 {
 	// Helper struct per pipeline
@@ -14,7 +15,7 @@ class DeviceWrapper
 	};
 public:
 
-	void enableDevice(const rs2::device& dev);
+	void enableDevice(const rs2::device& dev, std::vector<stream_profile_detail> streamProfiles);
 
 	void removeDevices(const rs2::event_information& info);
 	

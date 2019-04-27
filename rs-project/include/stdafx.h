@@ -32,6 +32,7 @@
 #include "Marker.h"
 #include "DeviceWrapper.h"
 #include "targetver.h"
+#include "DataTypes.h"
 
 typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;

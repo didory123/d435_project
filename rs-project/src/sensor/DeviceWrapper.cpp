@@ -58,7 +58,7 @@ void DeviceWrapper::setDepthTable(rs2::device& dev)
 }
 
 
-void DeviceWrapper::enableDevice(const rs2::device& dev)
+void DeviceWrapper::enableDevice(const rs2::device& dev, std::vector<stream_profile_detail> streamProfiles)
 {
 	std::string serial_number(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
 
@@ -109,8 +109,12 @@ void DeviceWrapper::enableDevice(const rs2::device& dev)
 		depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
 	}
 	std::cout << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE);
-	c.enable_stream(RS2_STREAM_COLOR, 0, 1280, 720, rs2_format::RS2_FORMAT_BGR8, 30);
-	c.enable_stream(RS2_STREAM_DEPTH, 0, 1280, 720, rs2_format::RS2_FORMAT_Z16, 30);
+	// Enable stream profiles
+	for (auto stream : streamProfiles)
+	{
+		c.enable_stream(stream.streamType, 0, stream.width, stream.height, stream.format, static_cast<unsigned int>(stream.frameRate));
+	}
+
 	c.enable_device(serial_number);
 	//c.enable_stream(RS2_STREAM_COLOR, 0, 848, 480, rs2_format::RS2_FORMAT_RGB8, 30); // D435 does not support HW sync for the RGB sensors!
 	// Start the pipeline with the configuration

@@ -153,6 +153,7 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\DataTypes.h" />
     <ClInclude Include="include\DeviceWrapper.h" />
     <ClInclude Include="include\Marker.h" />
     <ClInclude Include="include\stdafx.h" />

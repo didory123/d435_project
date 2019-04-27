@@ -520,12 +520,31 @@ int multiCamVisualize()
 		DeviceWrapper connected_devices;
 
 		rs2::context ctx;    // Create librealsense context for managing devices
+
+		// Initialize the streams that you want to start
+		stream_profile_detail stream_depth =
+		{
+			1280,
+			720,
+			RS2_STREAM_DEPTH,
+			rs2_format::RS2_FORMAT_Z16,
+			E_FRAME_RATE::FPS_30,
+		};
+		stream_profile_detail stream_color =
+		{
+			1280,
+			720,
+			RS2_STREAM_COLOR,
+			rs2_format::RS2_FORMAT_BGR8,
+			E_FRAME_RATE::FPS_30,
+		};
+		std::vector<stream_profile_detail> streams = { stream_depth, stream_color };
 		ctx.set_devices_changed_callback([&](rs2::event_information& info)
 		{
 			connected_devices.removeDevices(info);
 			for (auto&& dev : info.get_new_devices())
 			{
-				connected_devices.enableDevice(dev);
+				connected_devices.enableDevice(dev, streams);
 			}
 		});
 
@@ -558,7 +577,7 @@ int multiCamVisualize()
 		// Initial population of the device list
 		for (auto&& dev : ctx.query_devices()) // Query the list of connected RealSense devices
 		{
-			connected_devices.enableDevice(dev);
+			connected_devices.enableDevice(dev, streams);
 		}
 
 		/*for (int i = 0; i < connected_devices.deviceCount(); i++)
@@ -1223,20 +1242,40 @@ int project3DMultiple()
 
 		DeviceWrapper connected_devices;
 
+		// Initialize the streams that you want to start
+		stream_profile_detail stream_depth =
+		{
+			640,
+			480,
+			RS2_STREAM_DEPTH,
+			rs2_format::RS2_FORMAT_Z16,
+			E_FRAME_RATE::FPS_30,
+		};
+		stream_profile_detail stream_color =
+		{
+			640,
+			480,
+			RS2_STREAM_COLOR,
+			rs2_format::RS2_FORMAT_BGR8,
+			E_FRAME_RATE::FPS_30,
+		};
+		std::vector<stream_profile_detail> streams = { stream_depth, stream_color };
+
+
 		rs2::context ctx;    // Create librealsense context for managing devices
 		ctx.set_devices_changed_callback([&](rs2::event_information& info)
 		{
 			connected_devices.removeDevices(info);
 			for (auto&& dev : info.get_new_devices())
 			{
-				connected_devices.enableDevice(dev);
+				connected_devices.enableDevice(dev, streams);
 			}
 		});
 
 		// Initial population of the device list
 		for (auto&& dev : ctx.query_devices()) // Query the list of connected RealSense devices
 		{
-			connected_devices.enableDevice(dev);
+			connected_devices.enableDevice(dev, streams);
 
 		}
 		cv::Mat distortionCoefficients = (cv::Mat1d(1, 5) << 0, 0, 0, 0, 0);
