@@ -15,7 +15,8 @@ rs2::device DeviceWrapper::getADevice()
 	if (devices.size() == 0)
 	{
 		std::cout << "No device connected, please connect a RealSense device" << std::endl;
-		throw;
+		rs2::error e("No device connected, please connect a RealSense device");
+		throw e;
 	}
 	else
 	{
