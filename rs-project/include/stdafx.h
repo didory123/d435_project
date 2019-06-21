@@ -9,6 +9,8 @@
 #include <opencv2/opencv.hpp> 
 #include <opencv2/aruco.hpp>
 #include <opencv2/aruco/charuco.hpp>
+#include <opencv2/dnn.hpp>
+#include <opencv2/tracking.hpp>
 
 #include <librealsense2/rs.hpp>
 #include "librealsense2/rs_advanced_mode.hpp"
@@ -28,11 +30,13 @@
 #include <cmath>
 #include <map>
 #include <vector>
+#include <unordered_map>
 
 #include "Marker.h"
 #include "DeviceWrapper.h"
 #include "targetver.h"
 #include "DataTypes.h"
+#include "ObjectDetector.h"
 
 typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;

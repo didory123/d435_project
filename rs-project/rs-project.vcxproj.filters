@@ -30,10 +30,13 @@
     <ClInclude Include="include\DeviceWrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Visualizer.h">
+    <ClInclude Include="include\DataTypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\DataTypes.h">
+    <ClInclude Include="include\ObjectDetector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\TestDriver.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -50,7 +53,7 @@
     <ClCompile Include="src\sensor\DeviceWrapper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Visualizer.cpp">
+    <ClCompile Include="src\object_detection\ObjectDetector.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

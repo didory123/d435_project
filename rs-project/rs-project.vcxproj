@@ -158,16 +158,17 @@
     <ClInclude Include="include\Marker.h" />
     <ClInclude Include="include\stdafx.h" />
     <ClInclude Include="include\targetver.h" />
-    <ClInclude Include="Visualizer.h" />
+    <ClInclude Include="include\ObjectDetector.h" />
+    <ClInclude Include="include\TestDriver.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\object_detection\ObjectDetector.cpp" />
     <ClCompile Include="src\aruco\Marker.cpp" />
     <ClCompile Include="src\rsproject.cpp" />
     <ClCompile Include="src\sensor\DeviceWrapper.cpp" />
     <ClCompile Include="src\stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Visualizer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
