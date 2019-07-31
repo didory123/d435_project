@@ -1,7 +1,7 @@
 % Simple Matlab script for viewing 3D pointcloud files in .PLY format
 clear;
-ptCloudColor = pcread('exportColor.ply');
+ptCloudColor = pcread('initialPositions.pcd');
 pcshow(ptCloudColor);
-figure();
-ptCloudDepth = pcread('exportDepth.ply');
-pcshow(ptCloudDepth);
+% figure();
+% ptCloudDepth = pcread('exportDepth.ply');
+% pcshow(ptCloudDepth);

@@ -2,9 +2,12 @@
 #include "stdafx.h"
 
 // Fully static class that tests various functionalities with OpenCV/Intel Realsense 
+using namespace helper;
 class TestDriver
 {
 public:
+
+	
 
 	// The program logic for the aruco module testing happens here
 	static int arucoTest()
@@ -208,9 +211,9 @@ public:
 
 				// Copy the depth frames, but after colorizing it so it looks pretty
 				depth = depth.apply_filter(color_map);
-				pcl_color_ptr colorCloud = TestDriver::pointsToColorPCL(points, depth);
-				colorCloud = TestDriver::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
-				colorCloud = TestDriver::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
+				pcl_color_ptr colorCloud = helper::pointsToColorPCL(points, depth);
+				colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
+				colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
 				viewer.showCloud(colorCloud);
 			}
 
@@ -318,8 +321,8 @@ public:
 					rs2::points test = pointClouds[i].first;
 					rs2::frame depth = pointClouds[i].second;
 					timestamps.push_back(depth.get_timestamp());
-					pcl_color_ptr colorCloud = TestDriver::pointsToColorPCL(test, depth);
-					colorCloud = TestDriver::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
+					pcl_color_ptr colorCloud = helper::pointsToColorPCL(test, depth);
+					colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
 					//colorCloud = affineTransformTranslate(colorCloud, (i * 1.2) - 0.5);
 					// Copy the depth frames, but after colorizing it so it looks pretty
 					//rs2_timestamp_domain dom = depth.get_frame_timestamp_domain();
@@ -603,9 +606,9 @@ public:
 
 				// Copy the depth frames, but after colorizing it so it looks pretty
 				depth = depth.apply_filter(color_map);
-				pcl_color_ptr colorCloud = TestDriver::pointsToColorPCL(points, depth);
-				colorCloud = TestDriver::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
-				colorCloud = TestDriver::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
+				pcl_color_ptr colorCloud = helper::pointsToColorPCL(points, depth);
+				colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitZ());
+				colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
 				viewer.showCloud(colorCloud);
 			}
 
@@ -797,9 +800,9 @@ public:
 					rs2::points points = pointClouds[i].first;
 					rs2::frame depth = pointClouds[i].second;
 					timestamps.push_back(depth.get_timestamp());
-					pcl_color_ptr colorCloud = TestDriver::pointsToColorPCL(points, depth);
-					colorCloud = TestDriver::affineTransformMatrix(colorCloud, (TestDriver::getTransformMatrix(rotationVectors[i], translationVectors[i])).inverse());
-					colorCloud = TestDriver::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
+					pcl_color_ptr colorCloud = helper::pointsToColorPCL(points, depth);
+					colorCloud = helper::affineTransformMatrix(colorCloud, (helper::getTransformMatrix(rotationVectors[i], translationVectors[i])).inverse());
+					colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
 					// Copy the depth frames, but after colorizing it so it looks pretty
 					viewer->updatePointCloud(colorCloud, std::to_string(i));
 				}
@@ -896,6 +899,411 @@ public:
 	{
 		try
 		{
+
+			cv::Size frameSize = MEDIUM_DIMS;
+
+			const int FRAME_WIDTH = 1280;
+			const int FRAME_HEIGHT = 720;
+
+			std::string mainWindow = "Object Tracking", initialWindow = "Initial Objects", finalWindow = "Final Objects";
+
+			cv::namedWindow(initialWindow, cv::WINDOW_AUTOSIZE);
+			cv::namedWindow(mainWindow, cv::WINDOW_AUTOSIZE);
+			
+
+			rs2::pipeline pipe; // Declare RealSense pipeline, encapsulating the actual device and sensors
+			rs2::config cfg; // Going to create a custom configuration for our stream (mostly to have bigger frame dimensions)
+
+							 // Create custom configuration; more detailed documentation about this will be in a separate file
+							 // A custom configuration is used for this example app only, because Intel can give us camera intrinsic parameters for each
+							 // stream setting rather than me having to do custom calibration. For this example app I will use 1280x720 RGB8 30Hz settings
+			cfg.enable_stream(RS2_STREAM_COLOR, 0, LARGE_DIMS.width, LARGE_DIMS.height, rs2_format::RS2_FORMAT_BGR8, 30);
+			cfg.enable_stream(RS2_STREAM_DEPTH, 0, LARGE_DIMS.width, LARGE_DIMS.height, rs2_format::RS2_FORMAT_Z16, 30);
+
+			pipe.start(cfg); // Start streaming with default recommended configuration
+			
+			rs2::frame depth;// rgb, depth;
+			rs2::align align_to_color(RS2_STREAM_COLOR);
+
+
+
+			// =========================================================================================
+			// Get initial snapshot of objects in room
+			// =========================================================================================
+
+			cv::Mat initialColorMat;
+
+			// Run through first 50 frames or so to "flush out" some of the bad frames at the beginning
+			// Lighting is a little off for the first second or so of the stream
+			for (int i = 0; i < 50; i++)
+			{
+				rs2::frameset data = pipe.wait_for_frames();
+				data = align_to_color.process(data);
+				rs2::frame rgb = data.get_color_frame();
+				depth = data.get_depth_frame();
+				/*const int w = rgb.as<rs2::video_frame>().get_width();
+				const int h = rgb.as<rs2::video_frame>().get_height();
+				cv::Mat currFrame = frameToMat(rgb);
+				//cv::Mat currFrame(cv::Size(w, h), CV_8UC3, (void*)rgb.get_data(), cv::Mat::AUTO_STEP);
+				initialColorFrame = currFrame;*/
+				initialColorMat = frameToMat(rgb);
+			}
+
+			cv::Mat initialDepthMat = depthFrameToScale(pipe, depth);
+
+			// Get initial snapshot of all objects in the room
+			ObjectDetector detector(0.4);
+			std::map<std::string, cv::Rect2d> detectedObjects;
+			detector.detectAllObjects(initialColorMat, detectedObjects);
+
+			for (auto &i : detectedObjects)
+			{
+				// If the ROI extends outside the frame (because the detector will try to extrapolate)
+				// there will be an error. Therefore we trim the bbox to fit inside the frame
+				cv::Rect2d bboxToFitInMat(	std::max(0.0, i.second.x),
+											std::max(0.0, i.second.y),
+											i.second.x + i.second.width <= initialDepthMat.cols ? i.second.width : initialDepthMat.cols - i.second.x,
+											i.second.y + i.second.height <= initialDepthMat.rows ? i.second.height : initialDepthMat.rows - i.second.y);
+				cv::Scalar m = cv::mean(initialDepthMat(bboxToFitInMat));
+
+				// print depth information onto the image
+				cv::putText(initialColorMat, 
+					std::to_string(m[0]) + " meters away", 
+					cv::Point(i.second.x, i.second.y + bboxToFitInMat.height/2), 
+					cv::FONT_HERSHEY_SIMPLEX, 
+					0.45,
+					cv::Scalar(255, 255, 255), 
+					1);
+			}
+			cv::Mat initialPositions = initialColorMat;
+
+
+			// display all detected objects in the frame
+			cv::imshow(initialWindow, initialPositions);
+
+			cv::imwrite("initialPositions.png", initialPositions);
+
+			cv::putText(initialColorMat, "Press any key to begin manual selection of a person's bounding box", cv::Point(100, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255), 2);
+			cv::imshow(mainWindow, initialColorMat);
+
+
+			while (cv::waitKey(1) < 0)
+			{
+			}
+
+			cv::Rect2d bbox = cv::selectROI(mainWindow, initialColorMat, false);
+
+			// =========================================================================================
+			// Initialize tracker parameters
+			// =========================================================================================
+
+			// List of tracker types in OpenCV 4.0.1
+			std::string trackerTypes[8] = { "BOOSTING", "MIL", "KCF", "TLD","MEDIAN_FLOW", "GOTURN", "MOSSE", "CSRT" };
+
+			// As of OpenCV 3+ the tracker class is an abstract class
+			// For older versions however, use the below function
+			// #if (CV_MINOR_VERSION < 3)
+			// 	{
+			//		tracker = Tracker::create(trackerType);
+			//	}
+			// #endif
+
+			std::string trackerType = "KCF"; // Use the KCF algorithm
+
+			
+
+			//rs2::frame backgroundColorFrame = rgb;
+			//bool finished = false;
+			//std::thread t1(readColorFrame, pipe, backgroundColorFrame, finished);
+
+			//cv::Rect2d bbox;
+			//cv::destroyWindow(initialWindow);
+			//initialPositions = frameToMat(rgb);
+				//rs2::frameset data = pipe.wait_for_frames();
+				//rgb = data.get_color_frame();
+				//cv::Mat initialUneditedMat = frameToMat(rgb);
+			
+			
+
+			
+				//cv::putText(initialUneditedMat, "Select ROI", cv::Point(100, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255), 2);
+				
+			//}
+
+			// stand by until person manually restarts application
+			
+
+			//finished = true;
+
+			//cv::Rect2d bbox;
+
+			// Create a tracker
+			cv::Ptr<cv::Tracker> tracker = helper::createTrackerByName(trackerType);
+			tracker->init(initialColorMat, bbox);
+
+			bool isPersonInFrame = true;
+
+			// =========================================================================================
+			// Initialize video recording parameters
+			// =========================================================================================
+
+			// The recorded frames of the person being tracked
+			// The first value of the pair is the actual video frame itself
+			// The second value of the pair is the coordinates of the person being tracked in that frame at that moment
+			std::vector<std::pair<cv::Mat, cv::Rect2d>> recording;
+
+			// A counter for counting the number of frames that have elapsed
+			// The stream will be 30fps, as in there will be 30 frames per second
+			// We will store the current coordinate of the person being tracked every 30 frames, or 1 second
+			int frameCounter = 0;
+
+			cv::VideoWriter output;
+			output.open("output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30, frameSize);
+
+			int frameCount = 40, personCount = 0;
+			
+
+			// =========================================================================================
+			// Begin main loop for frame detection
+			// =========================================================================================
+			while (cv::waitKey(1) < 0)
+			{
+				rs2::frameset data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
+				rs2::frame rgb = data.get_color_frame(); // Get RGB frames
+
+														 // Query frame size (width and height)
+				const int w = rgb.as<rs2::video_frame>().get_width();
+				const int h = rgb.as<rs2::video_frame>().get_height();
+
+				// Create OpenCV matrix of size (w,h) from the colorized depth data
+				cv::Mat image(cv::Size(w, h), CV_8UC3, (void*)rgb.get_data(), cv::Mat::AUTO_STEP);
+
+
+				// if 40 frames has passed, run detection
+					//bool ok = tracker->init(image, bbox);
+					//rectangle(image, bbox, cv::Scalar(255, 0, 0), 2, 1);
+					bool ok = tracker->update(image, bbox);
+					if (ok)
+					{
+						// Tracking success : Draw the tracked object
+						rectangle(image, bbox, cv::Scalar(255, 0, 0), 2, 1);
+					}
+					else
+					{
+						// Tracking failure detected.
+						cv::putText(image, "Tracking failure detected", cv::Point(100, 150), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 255), 2);
+					}
+				cv::putText(image, "Press any key to stop tracking and get detected final object positions", cv::Point(100, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255), 2);
+				// Display frame.
+				//cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE); // only doing this for my current camera setup
+
+				if (frameCounter == 30)
+				{
+					recording.push_back(std::make_pair(image, bbox));
+					frameCounter = 0;
+
+				}
+				frameCount++;
+				output.write(image);
+				cv::imshow(mainWindow, image);
+
+				// if 50 frames have passed since a person was not found in the frame, auto exit
+				if (personCount > 50)
+				{
+					break;
+				}
+
+			}
+
+			output.release();
+			
+			//personTrackOutput.release(); // release the video writer
+			
+			cv::destroyWindow(mainWindow);
+
+			// Get final frame
+			rs2::frameset finalData = pipe.wait_for_frames();
+			rs2::frame finalRgb = finalData.get_color_frame();
+
+			cv::Mat finalFrame = frameToMat(finalRgb);
+
+			// Detect objects in final position
+			std::map<std::string, cv::Rect2d> finalDetectedObjects;
+
+			cv::Mat finalPositions = detector.detectAllObjects(finalFrame, finalDetectedObjects);
+
+			// Compare the two maps and if there is a difference in coordinates, update the color in the final image
+			for (auto obj : finalDetectedObjects)
+			{
+				// An object in the new map cannot be found in the original map, means this is a new object
+				// Draw a red colored rectangle
+				if (detectedObjects.count(obj.first) == 0)
+				{
+					cv::rectangle(finalFrame, obj.second, cv::Scalar(0, 0, 255), 2);
+				}
+				// If the object does exist in the initial snapshot, compare the new bounding box with the previous one
+				// If different, means the object has changed
+				// Draw a pink colored rectangle
+				else if (!ObjectDetector::bboxesEqual(obj.second, detectedObjects[obj.first]))
+				{
+					cv::rectangle(finalFrame, obj.second, cv::Scalar(221, 0, 255), 2);
+				}
+			}
+
+			cv::namedWindow(finalWindow, cv::WINDOW_AUTOSIZE);
+
+			cv::putText(finalPositions, "Pink: Changed positions     Red: New object", cv::Point(100, 80), cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(255, 0, 0), 2);
+			
+			while (cv::waitKey(1) < 0)
+			{
+				cv::imshow(finalWindow, finalPositions);
+				cv::imwrite("finalPositions.png", finalPositions);
+			}
+			
+
+		}
+		catch (const rs2::error & e)
+		{
+			std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+	}
+
+	static int autoObjectTracking(cv::Size size)
+	{
+		try
+		{
+			// =========================================================================================
+			// Initialize basic parameters (RealSense pipe, session output folder, video stream windows)
+			// =========================================================================================
+
+			cv::Size frameSize = size;
+
+			static int kFps = 30;
+
+
+			// Start up OpenCV windows
+			std::string mainWindow = "Object Tracking", initialWindow = "Initial Objects", finalWindow = "Final Objects";
+
+			//cv::namedWindow(initialWindow, cv::WINDOW_AUTOSIZE);
+			cv::namedWindow(mainWindow, cv::WINDOW_AUTOSIZE);
+
+
+			rs2::pipeline pipe; // Declare RealSense pipeline, encapsulating the actual device and sensors
+			rs2::config cfg; // Going to create a custom configuration for our stream (mostly to have bigger frame dimensions)
+
+							 // Create custom configuration; more detailed documentation about this will be in a separate file
+							 // A custom configuration is used for this example app only, because Intel can give us camera intrinsic parameters for each
+							 // stream setting rather than me having to do custom calibration. For this example app I will use 1280x720 RGB8 30Hz settings
+			cfg.enable_stream(RS2_STREAM_COLOR, 0, frameSize.width, frameSize.height, rs2_format::RS2_FORMAT_BGR8, kFps);
+			cfg.enable_stream(RS2_STREAM_DEPTH, 0, frameSize.width, frameSize.height, rs2_format::RS2_FORMAT_Z16, kFps);
+
+			pipe.start(cfg); // Start streaming with default recommended configuration
+
+			
+			// Run through first 50 frames or so to "flush out" some of the bad frames at the beginning
+			// Lighting is a little off for the first second or so of the stream
+			for (int i = 0; i < 50; i++)
+			{
+				rs2::frameset data = pipe.wait_for_frames();
+				rs2::frame rgb = data.get_color_frame();
+			}
+
+			// A counter for counting the number of frames that have elapsed
+			// The stream will be 30fps, as in there will be 30 frames per second
+			// We will perform object detection for a person every 5 seconds
+			
+			rs2::align align_to_color(RS2_STREAM_COLOR);
+
+			ObjectDetector detector(0.5);
+
+			int frameCount = 0;
+			while (cv::waitKey(1) < 0)
+			{
+				rs2::frameset data = pipe.wait_for_frames();
+				data = align_to_color.process(data);
+				rs2::frame rgb = data.get_color_frame();
+				rs2::frame depth = data.get_depth_frame();
+
+				// Every 5 seconds, check that a person is in the room
+				if (frameCount == kFps * 5)
+				{
+					cv::Mat image = helper::frameToMat(rgb);
+					
+					cv::Rect2d bbox;
+					bool isPersonInFrame = detector.detectPerson(image, bbox);
+
+					// If person is detected, an "activity" is happening
+					// Several steps will occur at this point:
+					// 1. Get the initial snapshot of all objects in the room
+					// 2. Track the person that just entered
+					// 3. Get the final snapshot of all object in the room when person leaves
+					// 4. Store all data to a folder specific to this "activity" then go back to idle mode, waiting for a person
+					if (isPersonInFrame)
+					{
+						rs2::colorizer colorMapper;
+						cv::Mat initialDepthMat = helper::depthFrameToScale(pipe, depth);
+						depth = colorMapper.colorize(depth);
+						Activity newActivity(
+							pipe, 
+							"KCF", 
+							image, 
+							initialDepthMat, 
+							cv::Mat(frameSize, CV_8UC3, (void*)depth.get_data(), cv::Mat::AUTO_STEP),
+							mainWindow, 
+							bbox, 
+							detector,
+							align_to_color);
+					}
+					frameCount = 0;
+				}
+				else
+				{
+					cv::Mat currImage = helper::frameToMat(rgb);
+					cv::putText(currImage,
+						"Idle mode",
+						cv::Point(10, 30),
+						cv::FONT_HERSHEY_SIMPLEX,
+						0.55,
+						cv::Scalar(15, 125, 255),
+						2);
+
+					cv::putText(currImage,
+								"Next detection in " + std::to_string((kFps * 5) - frameCount),
+								cv::Point(10, currImage.rows - 20),
+								cv::FONT_HERSHEY_SIMPLEX,
+								0.75, 
+								cv::Scalar(255, 0, 255),
+								2);
+					cv::imshow(mainWindow, currImage);
+				}
+				frameCount++;
+				
+			}
+
+
+		}
+		catch (const rs2::error & e)
+		{
+			std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+	}
+
+	static int originalObjectTracking()
+	{
+		try
+		{
 			const int FRAME_WIDTH = 1920;
 			const int FRAME_HEIGHT = 1080;
 
@@ -931,12 +1339,12 @@ public:
 			pipe.start(cfg); // Start streaming with default recommended configuration
 
 
-			// Create a tracker
-			cv::Ptr<cv::Tracker> tracker = TestDriver::createTrackerByName(trackerType);
+							 // Create a tracker
+			cv::Ptr<cv::Tracker> tracker = helper::createTrackerByName(trackerType);
 
 			cv::Mat initialFrame;
 
-			// Run through first 100 frames or so to "flush out" some of the bad frames at the beginning
+			// Run through first 50 frames or so to "flush out" some of the bad frames at the beginning
 			// Lighting is a little off for the first second or so of the stream
 			for (int i = 0; i < 50; i++)
 			{
@@ -1036,7 +1444,7 @@ public:
 			{
 				cv::imshow(finalWindow, finalPositions);
 			}
-			
+
 
 		}
 		catch (const rs2::error & e)
@@ -1050,231 +1458,8 @@ public:
 			return EXIT_FAILURE;
 		}
 	}
-
-
 private:
 
-	// Listed below are various helper functions
 
-	//======================================================
-	// RGB Texture
-	// - Function is utilized to extract the RGB data from
-	// a single point return R, G, and B values. 
-	// Normals are stored as RGB components and
-	// correspond to the specific depth (XYZ) coordinate.
-	// By taking these normals and converting them to
-	// texture coordinates, the RGB components can be
-	// "mapped" to each individual point (XYZ).
-	//======================================================
-	static std::tuple<int, int, int> RGB_Texture(const rs2::video_frame& texture, const rs2::texture_coordinate& Texture_XY)
-	{
-		// Get Width and Height coordinates of texture
-		int width = texture.get_width();  // Frame width in pixels
-		int height = texture.get_height(); // Frame height in pixels
-
-										   // Normals to Texture Coordinates conversion
-		int x_value = std::min(std::max(int(Texture_XY.u * width + .5f), 0), width - 1);
-		int y_value = std::min(std::max(int(Texture_XY.v * height + .5f), 0), height - 1);
-
-		int bytes = x_value * texture.get_bytes_per_pixel();   // Get # of bytes per pixel
-		int strides = y_value * texture.get_stride_in_bytes(); // Get line width in bytes
-		int Text_Index = (bytes + strides);
-
-		const auto New_Texture = reinterpret_cast<const uint8_t*>(texture.get_data());
-
-		// RGB components to save in tuple
-		int NT1 = New_Texture[Text_Index];
-		int NT2 = New_Texture[Text_Index + 1];
-		int NT3 = New_Texture[Text_Index + 2];
-
-		return std::tuple<int, int, int>(NT1, NT2, NT3);
-	}
-
-	//===================================================
-	//  PCL_Conversion
-	// - Function is utilized to fill a point cloud
-	//  object with depth and RGB data from a single
-	//  frame captured using the Realsense.
-	//=================================================== 
-	static pcl_color_ptr pointsToColorPCL(const rs2::points& points, const rs2::video_frame& color)
-	{
-
-		// Object Declaration (Point Cloud)
-		pcl_color_ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-		// Declare Tuple for RGB value Storage (<t0>, <t1>, <t2>)
-		std::tuple<uint8_t, uint8_t, uint8_t> RGB_Color;
-
-		//================================
-		// PCL Cloud Object Configuration
-		//================================
-		// Convert data captured from Realsense camera to Point Cloud
-		auto sp = points.get_profile().as<rs2::video_stream_profile>();
-
-		cloud->width = static_cast<uint32_t>(sp.width());
-		cloud->height = static_cast<uint32_t>(sp.height());
-		cloud->is_dense = false;
-		cloud->points.resize(points.size());
-
-		auto Texture_Coord = points.get_texture_coordinates();
-		auto Vertex = points.get_vertices();
-
-		// Iterating through all points and setting XYZ coordinates
-		// and RGB values
-		for (int i = 0; i < points.size(); ++i)
-		{
-			//===================================
-			// Mapping Depth Coordinates
-			// - Depth data stored as XYZ values
-			//===================================
-			cloud->points[i].x = Vertex[i].x;
-			cloud->points[i].y = Vertex[i].y;
-			cloud->points[i].z = Vertex[i].z;
-
-			// Obtain color texture for specific point
-			RGB_Color = TestDriver::RGB_Texture(color, Texture_Coord[i]);
-
-			// Mapping Color (BGR due to Camera Model)
-			cloud->points[i].r = std::get<2>(RGB_Color); // Reference tuple<2>
-			cloud->points[i].g = std::get<1>(RGB_Color); // Reference tuple<1>
-			cloud->points[i].b = std::get<0>(RGB_Color); // Reference tuple<0>
-
-		}
-
-		return cloud; // PCL RGB Point Cloud generated
-	}
-
-	static pcl_ptr pointsToPCL(const rs2::points& points)
-	{
-		pcl_ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-		auto sp = points.get_profile().as<rs2::video_stream_profile>();
-		cloud->width = sp.width();
-		cloud->height = sp.height();
-		cloud->is_dense = false;
-		cloud->points.resize(points.size());
-		auto ptr = points.get_vertices();
-		for (auto& p : cloud->points)
-		{
-			p.x = ptr->x;
-			p.y = ptr->y;
-			p.z = ptr->z;
-			ptr++;
-		}
-
-		return cloud;
-	}
-
-	static Eigen::Matrix4d getTransformMatrix(cv::Vec3d rotationVector, cv::Vec3d translationVector)
-	{
-		/* Reminder: how transformation matrices work :
-
-		|-------> This column is the translation
-		| 1 0 0 x |  \
-		| 0 1 0 y |   }-> The identity 3x3 matrix (no rotation) on the left
-		| 0 0 1 z |  /
-		| 0 0 0 1 |    -> We do not use this line (and it has to stay 0,0,0,1)
-
-		METHOD #1: Using a Matrix4f
-		This is the "manual" method, perfect to understand but error prone !
-		*/
-		cv::Mat rmat;
-		// OpenCV estimate pose functions give us the rotation vector, not matrix
-		// https://docs.opencv.org/3.4.3/d9/d0c/group__calib3d.html#ga61585db663d9da06b68e70cfbf6a1eac
-		// Convert the 3x1 vector to 3x3 matrix in order to perform our transformations on the pointcloud
-		cv::Rodrigues(rotationVector, rmat, cv::noArray());
-
-		Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
-		for (int i = 0; i < 3; i++)
-		{
-			for (int j = 0; j < 3; j++)
-			{
-				transformMatrix(i, j) = rmat.at<double>(i, j);
-			}
-		}
-		transformMatrix(0, 3) = translationVector[0];
-		transformMatrix(1, 3) = translationVector[1];
-		transformMatrix(2, 3) = translationVector[2];
-
-		return transformMatrix;
-	}
-
-	static pcl_color_ptr affineTransformMatrix(const pcl_color_ptr& source_cloud, Eigen::Matrix4d transformMat)
-	{
-
-		// The same rotation matrix as before; theta radians around Z axis
-		//transform_2.rotate(Eigen::AngleAxisf(theta, axis));
-
-		// Executing the transformation
-		pcl_color_ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
-		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud(*source_cloud, *transformed_cloud, transformMat);
-
-		return transformed_cloud;
-	}
-
-	static pcl_color_ptr affineTransformRotate(const pcl_color_ptr& source_cloud, Eigen::Vector3f::BasisReturnType axis, float theta = M_PI)
-	{
-
-		/*  METHOD #2: Using a Affine3f
-		This method is easier and less error prone
-		*/
-		Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
-
-		// The same rotation matrix as before; theta radians around Z axis
-		transform_2.rotate(Eigen::AngleAxisf(theta, axis));
-
-		// Executing the transformation
-		pcl_color_ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
-		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud(*source_cloud, *transformed_cloud, transform_2);
-
-		return transformed_cloud;
-	}
-
-	static pcl_color_ptr affineTransformTranslate(const pcl_color_ptr& source_cloud, float x = 0, float y = 0, float z = 0)
-	{
-
-		/*  METHOD #2: Using a Affine3f
-		This method is easier and less error prone
-		*/
-		Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
-
-		// Define a translation of 2.5 meters on the x axis.
-		transform_2.translation() << x, y, z;
-
-		// Executing the transformation
-		pcl_color_ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
-		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud(*source_cloud, *transformed_cloud, transform_2);
-
-		return transformed_cloud;
-	}
-
-	static inline cv::Ptr<cv::Tracker> createTrackerByName(cv::String name)
-	{
-		cv::Ptr<cv::Tracker> tracker;
-
-		if (name == "KCF")
-			tracker = cv::TrackerKCF::create();
-		else if (name == "TLD")
-			tracker = cv::TrackerTLD::create();
-		else if (name == "BOOSTING")
-			tracker = cv::TrackerBoosting::create();
-		else if (name == "MEDIAN_FLOW")
-			tracker = cv::TrackerMedianFlow::create();
-		else if (name == "MIL")
-			tracker = cv::TrackerMIL::create();
-		else if (name == "GOTURN")
-			tracker = cv::TrackerGOTURN::create();
-		else if (name == "MOSSE")
-			tracker = cv::TrackerMOSSE::create();
-		else if (name == "CSRT")
-			tracker = cv::TrackerCSRT::create();
-		else
-			CV_Error(cv::Error::StsBadArg, "Invalid tracking algorithm name\n");
-
-		return tracker;
-	}
 };
 
