@@ -4,11 +4,15 @@
 using namespace cv;
 using namespace cv::dnn;
 
-ObjectDetector::ObjectDetector(const std::string& cfgPath, const std::string& weightsPath, const std::string& namesPath, double confidence)
-{
 
-	confidence_ = confidence;
+ObjectDetector::ObjectDetector(double confidence, const std::string& cfgPath, const std::string& weightsPath, const std::string& namesPath)
+{
+	// Load the model
 	this->net_ = readNetFromDarknet(cfgPath, weightsPath);
+	outNames_ = this->net_.getUnconnectedOutLayersNames();
+	this->net_.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);
+
+	// Load classes file and read them into vector
 	std::string file(DEFAULT_NAMES_PATH);
 	std::ifstream ifs(file.c_str());
 	if (!ifs.is_open())
@@ -18,10 +22,10 @@ ObjectDetector::ObjectDetector(const std::string& cfgPath, const std::string& we
 	{
 		this->classes_.push_back(line);
 	}
-
-	outNames_ = this->net_.getUnconnectedOutLayersNames();
-	this->net_.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);
-
+	
+	// Set desired confidence value
+	confidence_ = confidence;
+	
 }
 
 
@@ -29,11 +33,13 @@ ObjectDetector::~ObjectDetector()
 {
 }
 
+// This function is used for the objectDetection test case only
+// Assumes that image is in RGB
 cv::Mat ObjectDetector::detect(cv::Mat image)
 {
 
 	Mat inputBlob;
-	blobFromImage(image, inputBlob, inScaleFactor, Size(320, 320), meanVal, false); //Convert Mat to batch of images
+	blobFromImage(image, inputBlob, inScaleFactor, REGULAR_SIZE, meanVal, false); //Convert Mat to batch of images
 	net_.setInput(inputBlob); //set the network input
 
 	std::vector<Mat> outs;
@@ -117,7 +123,7 @@ cv::Mat ObjectDetector::detect(cv::Mat image)
 	}
 
 	std::vector<int> indices;
-	NMSBoxes(boxes, confidences, 0.5, 4, indices);
+	NMSBoxes(boxes, confidences, confidence_, 0.2, indices);
 	for (size_t i = 0; i < indices.size(); ++i)
 	{
 		int idx = indices[i];
@@ -132,7 +138,8 @@ bool ObjectDetector::detectPerson(cv::Mat image, cv::Rect2d& bbox)
 {
 
 	Mat inputBlob;
-	blobFromImage(image, inputBlob, inScaleFactor, Size(320, 320), meanVal, false); //Convert Mat to batch of images
+
+	blobFromImage(image, inputBlob, inScaleFactor, REGULAR_SIZE, meanVal, false); //Convert Mat to batch of images
 	net_.setInput(inputBlob); //set the network input
 
 	std::vector<Mat> outs;
@@ -217,7 +224,7 @@ bool ObjectDetector::detectPerson(cv::Mat image, cv::Rect2d& bbox)
 		
 
 	std::vector<int> indices;
-	NMSBoxes(boxes, confidences, 0.5, 4, indices);
+	NMSBoxes(boxes, confidences, confidence_, 0.2, indices);
 	for (size_t i = 0; i < indices.size(); ++i)
 	{
 		int idx = indices[i];
@@ -236,11 +243,12 @@ bool ObjectDetector::detectPerson(cv::Mat image, cv::Rect2d& bbox)
 	return false;
 }
 
+// Assumes that image is in RGB
 cv::Mat ObjectDetector::detectAllObjects(cv::Mat image, std::map<std::string, cv::Rect2d>& objects)
 {
 
 	Mat inputBlob;
-	blobFromImage(image, inputBlob, inScaleFactor, Size(320, 320), meanVal, false); //Convert Mat to batch of images
+	blobFromImage(image, inputBlob, inScaleFactor, REGULAR_SIZE, meanVal, false); //Convert Mat to batch of images
 	net_.setInput(inputBlob); //set the network input
 
 	std::vector<Mat> outs;
@@ -302,6 +310,10 @@ cv::Mat ObjectDetector::detectAllObjects(cv::Mat image, std::map<std::string, cv
 				Point classIdPoint;
 				double confidence;
 				minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
+				if (confidence > 0)
+				{
+					std::cout << confidence << std::endl;
+				}
 				if (confidence > confidence_)
 				{
 					int centerX = (int)(data[0] * image.cols);
@@ -324,13 +336,12 @@ cv::Mat ObjectDetector::detectAllObjects(cv::Mat image, std::map<std::string, cv
 	}
 
 	std::vector<int> indices;
-	NMSBoxes(boxes, confidences, 0.5, 4, indices);
+	NMSBoxes(boxes, confidences, confidence_, 0.2, indices);
 	for (size_t i = 0; i < indices.size(); ++i)
 	{
 		int idx = indices[i];
 		Rect box = boxes[idx];
-		drawPred(classIds[idx], confidences[idx], box.x, box.y,
-			box.x + box.width, box.y + box.height, image);
+		drawPred(classIds[idx], confidences[idx], box.x, box.y, box.x + box.width, box.y + box.height, image);
 		std::string objectName = classes_[classIds[idx]];
 
 		objects[objectName] = box; // add object to map
@@ -343,6 +354,14 @@ void ObjectDetector::drawPred(int classId, float conf, int left, int top, int ri
 	using namespace cv;
 	using namespace cv::dnn;
 	using namespace rs2;
+
+	// The detector will extrapolate and give coordinate values extending beyond the dimensions of the frame
+	// Keep the given points within the frame dimensions
+	left = std::max(0, left);
+	top = std::max(0, top);
+	right = std::min(right, frame.cols);
+	bottom = std::min(bottom, frame.rows);
+
 
 	rectangle(frame, Point(left, top), Point(right, bottom), Scalar(0, 255, 0));
 
@@ -361,3 +380,4 @@ void ObjectDetector::drawPred(int classId, float conf, int left, int top, int ri
 		Point(left + labelSize.width, top + baseLine), Scalar::all(255), FILLED);
 	putText(frame, label, Point(left, top), FONT_HERSHEY_SIMPLEX, 0.5, Scalar());
 }
+

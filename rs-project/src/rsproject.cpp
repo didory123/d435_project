@@ -33,6 +33,9 @@ int main()
 	std::cout << "Input 5 to test mapping multiple, 3D pointclouds to real world coordinates" << std::endl;
 	std::cout << "Input 6 to test YOLO object detection" << std::endl;
 	std::cout << "Input 7 to test object tracking" << std::endl;
+	std::cout << "Input 8 to test multicamera automatic personperson tracking" << std::endl;
+
+	std::cout << "Input 9 to test automatic person tracking" << std::endl;
 	// get user input
 	while (std::getline(std::cin, userInput))
 	{	
@@ -63,6 +66,68 @@ int main()
 		else if (userInput == "7")
 		{
 			return TestDriver::objectTracking();
+		}
+		else if (userInput == "8")
+		{
+			cv::Size frameSize;
+			std::cout << "Input a number from 1-4 to select the size of the video frames (1 is smallest, 4 is largest)" << std::endl;
+			while (std::getline(std::cin, userInput))
+			{
+				if (userInput == "1")
+				{
+					frameSize = SMALL_DIMS;
+				}
+				else if (userInput == "2")
+				{
+					frameSize = MEDIUM_DIMS;
+				}
+				else if (userInput == "3")
+				{
+					frameSize = LARGE_DIMS;
+				}
+				else if (userInput == "4")
+				{
+					frameSize = LARGEST_DIMS;
+				}
+				else
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+					continue;
+				}
+				return TestDriver::multipleCameraAutoTracking(frameSize);
+			}
+		}
+		else if (userInput == "9")
+		{
+			cv::Size frameSize;
+			std::cout << "Input a number from 1-4 to select the size of the video frames (1 is smallest, 4 is largest)" << std::endl;
+			while (std::getline(std::cin, userInput))
+			{
+				if (userInput == "1")
+				{
+					frameSize = SMALL_DIMS;
+				}
+				else if (userInput == "2")
+				{
+					frameSize = MEDIUM_DIMS;
+				}
+				else if (userInput == "3")
+				{
+					frameSize = LARGE_DIMS;
+				}
+				else if (userInput == "4")
+				{
+					frameSize = LARGEST_DIMS;
+				}
+				else
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+					continue;
+				}
+				return TestDriver::autoObjectTracking(frameSize);
+			}
+			
+
 		}
 		else
 		{

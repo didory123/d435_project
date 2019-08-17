@@ -139,6 +139,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
+      <DisableSpecificWarnings>4996</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -153,15 +154,19 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\Activity.h" />
     <ClInclude Include="include\DataTypes.h" />
     <ClInclude Include="include\DeviceWrapper.h" />
     <ClInclude Include="include\Marker.h" />
+    <ClInclude Include="include\MultiCameraActivity.h" />
     <ClInclude Include="include\stdafx.h" />
     <ClInclude Include="include\targetver.h" />
     <ClInclude Include="include\ObjectDetector.h" />
     <ClInclude Include="include\TestDriver.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\activity\Activity.cpp" />
+    <ClCompile Include="src\activity\MultiCameraActivity.cpp" />
     <ClCompile Include="src\object_detection\ObjectDetector.cpp" />
     <ClCompile Include="src\aruco\Marker.cpp" />
     <ClCompile Include="src\rsproject.cpp" />

@@ -100,6 +100,7 @@ void DeviceWrapper::enableDevice(const rs2::device& dev, std::vector<stream_prof
 		}
 	} 
 
+	// If physical wiring is used, set one to master and one to slave
 	if (!_hasMaster)
 	{
 		 depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 1);
@@ -110,6 +111,7 @@ void DeviceWrapper::enableDevice(const rs2::device& dev, std::vector<stream_prof
 		depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
 	}
 	std::cout << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE);
+
 	// Enable stream profiles
 	for (auto stream : streamProfiles)
 	{
@@ -117,7 +119,7 @@ void DeviceWrapper::enableDevice(const rs2::device& dev, std::vector<stream_prof
 	}
 
 	c.enable_device(serial_number);
-	//c.enable_stream(RS2_STREAM_COLOR, 0, 848, 480, rs2_format::RS2_FORMAT_RGB8, 30); // D435 does not support HW sync for the RGB sensors!
+
 	// Start the pipeline with the configuration
 	rs2::pipeline_profile profile = p.start(c);
 	// Hold it internally
@@ -190,7 +192,7 @@ void DeviceWrapper::pollFrames()
 				//rs2::frame depth_frame = frameset.first(RS2_STREAM_DEPTH);
 				rs2::frame depth_frame = frameset.get_depth_frame();
 				view.second.colorFrame = frameset.get_color_frame();
-				view.second.depthFrame = view.second.colorize_frame.process(view.second.colorFrame);
+				view.second.depthFrame = depth_frame;// view.second.colorize_frame.process(depth_frame);
 				pc.map_to(view.second.depthFrame);
 				view.second.pointCloud = pc.calculate(depth_frame);
 				
@@ -266,6 +268,40 @@ std::vector<rs2::frame> DeviceWrapper::getColorFrames()
 	return colorFrames;
 }
 
+
+std::map<std::string, rs2::frame> DeviceWrapper::getDepthFrames()
+{
+	std::lock_guard<std::mutex> lock(_mutex);
+	std::map<std::string, rs2::frame> depthFrames;
+	// Go over all device
+	for (auto&& view : _devices) //2
+	{
+		if (view.second.depthFrame)
+		{
+			depthFrames[view.first] = view.second.depthFrame;
+		}
+
+	}
+	return depthFrames;
+}
+
+std::map<std::string, rs2::frame> DeviceWrapper::getRGBFrames()
+{
+	std::lock_guard<std::mutex> lock(_mutex);
+	std::map<std::string, rs2::frame> colorFrames;
+	// Go over all device
+	for (auto&& view : _devices) //2
+	{
+		if (view.second.colorFrame)
+		{
+			colorFrames[view.first] = view.second.colorFrame;
+		}
+
+	}
+	return colorFrames;
+}
+
+
 std::vector<cv::Mat> DeviceWrapper::getCameraMatrices()
 {
 	try
@@ -287,6 +323,38 @@ std::vector<cv::Mat> DeviceWrapper::getCameraMatrices()
 
 					cv::Mat cameraMatrix = (cv::Mat1d(3, 3) << focal_length.first, 0, principal_point.first, 0, focal_length.second, principal_point.second, 0, 0, 1);
 					matrices.push_back(cameraMatrix);
+				}
+			}
+		}
+		return matrices;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "Failed to get intrinsics for the given stream. " << e.what() << std::endl;
+	}
+}
+
+std::map<std::string, cv::Mat> DeviceWrapper::getCameraMatricesMap()
+{
+	try
+	{
+		std::map<std::string, cv::Mat> matrices;
+		for (auto d : _devices)
+		{
+			auto stream_profiles = d.second.profile.get_streams();
+			for (rs2::stream_profile stream : stream_profiles)
+			{
+				if (stream.format() == RS2_FORMAT_BGR8)
+				{
+					auto video_stream = stream.as<rs2::video_stream_profile>();
+					//If the stream is indeed a video stream, we can now simply call get_intrinsics()
+					rs2_intrinsics intrinsics = video_stream.get_intrinsics();
+
+					auto principal_point = std::make_pair(intrinsics.ppx, intrinsics.ppy);
+					auto focal_length = std::make_pair(intrinsics.fx, intrinsics.fy);
+
+					cv::Mat cameraMatrix = (cv::Mat1d(3, 3) << focal_length.first, 0, principal_point.first, 0, focal_length.second, principal_point.second, 0, 0, 1);
+					matrices[d.first] = cameraMatrix;
 				}
 			}
 		}
