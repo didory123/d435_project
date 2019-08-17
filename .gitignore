@@ -236,9 +236,9 @@ _Pvt_Extensions
 .fake/
 
 # This project-specific files
-.ply
-.pcd
-.avi
-.weights
+*.ply
+*.pcd
+*.avi
+*.weights
 **/2019*/
 
