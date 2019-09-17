@@ -644,7 +644,8 @@ public:
 
 			// create charuco board object
 			// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
-			Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.032, 0.019, dictionary);
+			//Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.032, 0.019, dictionary);
+			Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.08, 0.048, dictionary);
 			Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
 
 			DeviceWrapper connected_devices;
@@ -756,7 +757,7 @@ public:
 					cv::imshow(window_name, combinedImage);
 				}
 				char key = (char)waitKey(10);
-				if (key == 27)
+				if (key > 0)
 				{
 					if (rvecs.size() > 0 && tvecs.size() > 0)
 					{
@@ -808,6 +809,29 @@ public:
 					colorCloud = helper::affineTransformMatrix(colorCloud, (helper::getTransformMatrix(rotationVectors[i], translationVectors[i])).inverse());
 					colorCloud = helper::affineTransformRotate(colorCloud, Eigen::Vector3f::UnitY());
 					// Copy the depth frames, but after colorizing it so it looks pretty
+
+					float min = colorCloud->points[0].z;
+					float max = colorCloud->points[0].z;
+					for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = colorCloud->begin(); cloud_it != colorCloud->end(); ++cloud_it)
+					{
+						min = std::min(min, cloud_it->z);
+						max = std::max(max, cloud_it->z);
+					}
+					// Compute LUT scaling to fit the full histogram spectrum
+					double lut_scale = 255.0 / (max - min);  // max is 255, min is 0
+
+					if (min == max)  // In case the cloud is flat on the chosen direction (x,y or z)
+						lut_scale = 1.0;  // Avoid rounding error in boost
+
+					for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = colorCloud->begin(); cloud_it != colorCloud->end(); ++cloud_it)
+					{
+						int value = std::lround((cloud_it->z - min) * lut_scale);
+						// Blue -> Green -> Red (~ rainbow)
+						cloud_it->r = value;
+						cloud_it->g = 0;
+						cloud_it->b = 255 - value;
+					}
+
 					viewer->updatePointCloud(colorCloud, std::to_string(i));
 				}
 
@@ -1201,7 +1225,8 @@ public:
 
 			// create charuco board object
 			// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
-			Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.0318, 0.0189, dictionary);
+			//Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.0318, 0.0189, dictionary);
+			Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.08, 0.048, dictionary);
 			Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
 
 			DeviceWrapper connected_devices;
@@ -1311,7 +1336,7 @@ public:
 					cv::imshow(mainWindow, combinedImage);
 				}
 				char key = (char)waitKey(10);
-				if (key == 27)
+				if (key > 0)
 				{
 					if (rvecs.size() > 0 && tvecs.size() > 0)
 					{
@@ -1355,12 +1380,36 @@ public:
 			auto colorFrames = connected_devices.getRGBFrames();
 			auto depthFrames = connected_devices.getDepthFrames();
 
+
+			// Run the filters
+			// IMPORTANT: The filters must be run in the exact order as written below
+			rs2::decimation_filter dec_filter;  // 1. Decimation - reduces depth frame density
+
+			// Declare disparity transform from depth to disparity and vice versa
+			const std::string disparity_filter_name = "Disparity"; // 2. Depth to disparity
+			rs2::disparity_transform depth_to_disparity(true);
+
+			rs2::spatial_filter spat_filter;    // 3. Spatial    - edge-preserving spatial smoothing
+			rs2::temporal_filter temp_filter;   // 4. Temporal   - reduces temporal noise
+
+			rs2::disparity_transform disparity_to_depth(false); // 5. Disparity back to depth
+
 			for (auto & framePair : colorFrames)
 			{
+
+				//depthFrames[framePair.first] = dec_filter.process(depthFrames[framePair.first]); // 1
+				depthFrames[framePair.first] = depth_to_disparity.process(depthFrames[framePair.first]); // 2
+				depthFrames[framePair.first] = spat_filter.process(depthFrames[framePair.first]); // 3
+				depthFrames[framePair.first] = temp_filter.process(depthFrames[framePair.first]); // 4
+				depthFrames[framePair.first] = disparity_to_depth.process(depthFrames[framePair.first]); // 5
+
 				initialColorMats[framePair.first] = helper::frameToMat(framePair.second).clone();
 				initialDepthMats[framePair.first] = helper::frameToMat(depthFrames[framePair.first]).clone();
 				rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
-				depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+
+				//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+				// TODO: Comment below line and uncomment above line
+				depthColorMappers[framePair.first] = helper::frameToMat(framePair.second).clone();
 
 			}
 
@@ -1464,10 +1513,22 @@ public:
 					{
 						for (auto & framePair : colorFrames)
 						{
+							//depthFrames[framePair.first] = dec_filter.process(depthFrames[framePair.first]); // 1
+							depthFrames[framePair.first] = depth_to_disparity.process(depthFrames[framePair.first]); // 2
+							depthFrames[framePair.first] = spat_filter.process(depthFrames[framePair.first]); // 3
+							depthFrames[framePair.first] = temp_filter.process(depthFrames[framePair.first]); // 4
+							depthFrames[framePair.first] = disparity_to_depth.process(depthFrames[framePair.first]); // 5
+
+							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+							// TODO: Comment below line and uncomment above line
+							depthColorMappers[framePair.first] = helper::frameToMat(framePair.second).clone();
+
 							initialColorMats[framePair.first] = helper::frameToMat(framePair.second).clone();
 							initialDepthMats[framePair.first] = helper::frameToMat(depthFrames[framePair.first]).clone();
 							rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
-							depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+							// TODO: Comment below line and uncomment above line
+							depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)framePair.second.get_data(), cv::Mat::AUTO_STEP);
 						}
 
 					}
@@ -1521,6 +1582,7 @@ public:
 			return EXIT_FAILURE;
 		}
 	}
+
 	static int autoObjectTracking(cv::Size size)
 	{
 		try
@@ -1647,6 +1709,441 @@ public:
 			return EXIT_FAILURE;
 		}
 	}
+
+	// Assumes the cameras cover the entirety of the room
+	static int roomActivityVisualize(float leftWidthVal, float rightWidthVal, float topHeightVal, float bottomHeightVal, float cameraDistanceVal, cv::Size size)
+	{
+		using namespace cv;
+		try
+		{
+			// =========================================================================================
+			// Initialize basic parameters (RealSense pipe, session output folder, video stream windows)
+			// =========================================================================================
+
+			// Start up OpenCV windows
+			std::string mainWindow = "Object Tracking", charucoWindow = "Calibration", finalWindow = "Final Objects";
+
+			//cv::namedWindow(initialWindow, cv::WINDOW_AUTOSIZE);
+			cv::namedWindow(mainWindow, cv::WINDOW_AUTOSIZE);
+
+			//------------------------------------------------------------------------------
+			//------------------------- OpenCV Setup ---------------------------------------
+			//------------------------------------------------------------------------------
+
+			// Create dictionary object from specific aruco library set
+			Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(cv::aruco::DICT_6X6_250));
+
+			// create charuco board object
+			// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
+			//Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.0318, 0.0189, dictionary);
+			Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.08, 0.048, dictionary);
+			Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
+
+			DeviceWrapper connected_devices;
+
+			// Initialize the streams that you want to start
+			stream_profile_detail stream_depth =
+			{
+				size.width,
+				size.height,
+				RS2_STREAM_DEPTH,
+				rs2_format::RS2_FORMAT_Z16,
+				E_FRAME_RATE::FPS_30,
+			};
+			stream_profile_detail stream_color =
+			{
+				size.width,
+				size.height,
+				RS2_STREAM_COLOR,
+				rs2_format::RS2_FORMAT_BGR8,
+				E_FRAME_RATE::FPS_30,
+			};
+
+			std::vector<stream_profile_detail> streams = { stream_depth, stream_color };
+
+			rs2::context ctx;    // Create librealsense context for managing devices
+			ctx.set_devices_changed_callback([&](rs2::event_information& info)
+			{
+				connected_devices.removeDevices(info);
+				for (auto&& dev : info.get_new_devices())
+				{
+					connected_devices.enableDevice(dev, streams);
+				}
+			});
+
+			// Initial population of the device list
+			for (auto&& dev : ctx.query_devices()) // Query the list of connected RealSense devices
+			{
+				connected_devices.enableDevice(dev, streams);
+
+			}
+			cv::Mat distortionCoefficients = (cv::Mat1d(1, 5) << 0, 0, 0, 0, 0);
+			auto cameraMatrices = connected_devices.getCameraMatricesMap();
+			std::map<std::string, Vec3d> rotationVectors, translationVectors;
+
+			//------------------------------------------------------------------------------
+			//------------------- Initial Marker Detection loop ----------------------------
+			//------------------------------------------------------------------------------
+			while (1) {
+
+				connected_devices.pollFrames();
+
+				Vec3d rvec, tvec;
+				std::map<std::string, Vec3d> rvecs, tvecs;
+
+				auto colorFrames = connected_devices.getRGBFrames();
+				std::vector<cv::Mat> images;
+				for (auto &frame : colorFrames)
+				{
+					cv::Mat image = helper::frameToMat(frame.second).clone();
+					cv::Mat imageCopy;
+
+					std::vector< int > markerIds;
+					std::vector< std::vector< Point2f > > corners;
+					// detect markers	
+					aruco::detectMarkers(image, dictionary, corners, markerIds);
+
+					// interpolate charuco corners
+					std::vector< Point2f > currentCharucoCorners;
+					std::vector<int> currentCharucoIds;
+					int interpolatedCorners = 0;
+					if (markerIds.size() > 0)
+						interpolatedCorners = aruco::interpolateCornersCharuco(corners, markerIds, image,
+							charucoboard, currentCharucoCorners, currentCharucoIds, cameraMatrices[frame.first], distortionCoefficients);
+
+					// estimate charuco board pose
+					aruco::estimatePoseCharucoBoard(currentCharucoCorners, currentCharucoIds, charucoboard,
+						cameraMatrices[frame.first], distortionCoefficients, rvec, tvec);
+
+					// draw results
+					image.copyTo(imageCopy);
+
+					// draw aruco markers
+					if (markerIds.size() > 0)
+					{
+						aruco::drawDetectedMarkers(imageCopy, corners);
+					}
+					// draw things
+					if (interpolatedCorners > 0)
+					{
+						// draw corners
+						aruco::drawDetectedCornersCharuco(imageCopy, currentCharucoCorners, currentCharucoIds);
+						// draw pose
+						aruco::drawAxis(imageCopy, cameraMatrices[frame.first], distortionCoefficients, rvec, tvec, 0.05);
+					}
+					rvecs[frame.first] = rvec;
+					tvecs[frame.first] = tvec;
+					images.push_back(imageCopy);
+
+				}
+				if (images.size() > 0)
+				{
+					//cv::imshow(window_name, images[0]);
+					cv::Mat combinedImage;
+					cv::hconcat(images, combinedImage);
+					putText(combinedImage, "Press 'ESC' when your marker is visible in all camera streams.",
+						Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0), 2);
+					cv::imshow(mainWindow, combinedImage);
+				}
+				char key = (char)waitKey(10);
+				if (key > 0)
+				{
+					if (rvecs.size() > 0 && tvecs.size() > 0)
+					{
+						rotationVectors = rvecs;
+						translationVectors = tvecs;
+					}
+					break;
+				}
+			}
+			//cv::destroyAllWindows();
+
+			// Create map of calibration matrices
+			std::map<std::string, Eigen::Matrix4d> calibrationMatrices;
+			for (auto &vec : rotationVectors)
+			{
+				calibrationMatrices[vec.first] = helper::getTransformMatrix(vec.second, translationVectors[vec.first]);
+			}
+
+			// A counter for counting the number of frames that have elapsed
+			// The stream will be 30fps, as in there will be 30 frames per second
+			// We will perform object detection for a person every 5 seconds
+
+			rs2::align align_to_color(RS2_STREAM_COLOR);
+
+			ObjectDetector detector(0.5);
+
+			int frameCount = 0;
+			int kFps = static_cast<int>(E_FRAME_RATE::FPS_30);
+
+			// Map color to depth frames
+			rs2::colorizer color_map;
+
+			//------------------------------------------------------------------------------
+			//---------------------- Get Initial Room Snapshots ----------------------------
+			//------------------------------------------------------------------------------
+			std::map<std::string, cv::Mat> initialColorMats;
+			std::map<std::string, cv::Mat> initialDepthMats;
+			std::map<std::string, cv::Mat> depthColorMappers;
+
+			connected_devices.pollFrames();
+			auto colorFrames = connected_devices.getRGBFrames();
+			auto depthFrames = connected_devices.getDepthFrames();
+
+
+			// Run the filters
+			// IMPORTANT: The filters must be run in the exact order as written below
+			rs2::decimation_filter dec_filter;  // 1. Decimation - reduces depth frame density
+
+			// Declare disparity transform from depth to disparity and vice versa
+			const std::string disparity_filter_name = "Disparity"; // 2. Depth to disparity
+			rs2::disparity_transform depth_to_disparity(true);
+
+			rs2::spatial_filter spat_filter;    // 3. Spatial    - edge-preserving spatial smoothing
+			rs2::temporal_filter temp_filter;   // 4. Temporal   - reduces temporal noise
+
+			rs2::disparity_transform disparity_to_depth(false); // 5. Disparity back to depth
+
+			for (auto & framePair : colorFrames)
+			{
+
+				//depthFrames[framePair.first] = dec_filter.process(depthFrames[framePair.first]); // 1
+				depthFrames[framePair.first] = depth_to_disparity.process(depthFrames[framePair.first]); // 2
+				depthFrames[framePair.first] = spat_filter.process(depthFrames[framePair.first]); // 3
+				depthFrames[framePair.first] = temp_filter.process(depthFrames[framePair.first]); // 4
+				depthFrames[framePair.first] = disparity_to_depth.process(depthFrames[framePair.first]); // 5
+
+				initialColorMats[framePair.first] = helper::frameToMat(framePair.second).clone();
+				initialDepthMats[framePair.first] = helper::frameToMat(depthFrames[framePair.first]).clone();
+				rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
+
+				//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+				// TODO: Comment below line and uncomment above line
+				depthColorMappers[framePair.first] = helper::frameToMat(framePair.second).clone();
+
+			}
+
+
+			//------------------------------------------------------------------------------
+			//------------------------- Main Loop-------------------------------------------
+			//------------------------------------------------------------------------------
+			while (cv::waitKey(1) < 0)
+			{
+				connected_devices.pollFrames();
+				auto colorFrames = connected_devices.getRGBFrames();
+
+
+
+				// Every 4 seconds, check that a person is in the room
+				if (frameCount == kFps * 4)
+				{
+
+					std::map<std::string, cv::Rect2d> personBboxes;
+
+					auto depthFrames = connected_devices.getDepthFrames();
+					bool isPersonInFrame = false;
+					for (auto & framePair : colorFrames)
+					{
+						cv::Rect2d bbox;
+						cv::Mat image = helper::frameToMat(framePair.second).clone();
+
+						if (detector.detectPerson(image, bbox))
+						{
+							isPersonInFrame = true;
+						}
+
+						// We still want to update the person bbox for all cameras every time, because if 
+						// even one device finds a person, we want to start an activity, therefore we will preserve all potential data
+						personBboxes[framePair.first] = bbox;
+					}
+
+					// If person is detected, an "activity" is happening
+					// Several steps will occur at this point:
+					// 1. Get the initial snapshot of all objects in the room
+					// 2. Track the person that just entered
+					// 3. Get the final snapshot of all object in the room when person leaves
+					// 4. Store all data to a folder specific to this "activity" then go back to idle mode, waiting for a person
+					if (isPersonInFrame)
+					{
+						RoomActivity newActivity(
+							(connected_devices._devices.begin())->second.pipe,
+							size,
+							"KCF",
+							initialColorMats,
+							initialDepthMats,
+							depthColorMappers,
+							personBboxes,
+							calibrationMatrices,
+							mainWindow,
+							detector,
+							connected_devices,
+							leftWidthVal,
+							rightWidthVal,
+							topHeightVal,
+							bottomHeightVal,
+							cameraDistanceVal);
+					}
+					// If no person was detected, use this as an opportunity to update the current initial snapshots
+					else
+					{
+						for (auto & framePair : colorFrames)
+						{
+							//depthFrames[framePair.first] = dec_filter.process(depthFrames[framePair.first]); // 1
+							depthFrames[framePair.first] = depth_to_disparity.process(depthFrames[framePair.first]); // 2
+							depthFrames[framePair.first] = spat_filter.process(depthFrames[framePair.first]); // 3
+							depthFrames[framePair.first] = temp_filter.process(depthFrames[framePair.first]); // 4
+							depthFrames[framePair.first] = disparity_to_depth.process(depthFrames[framePair.first]); // 5
+
+							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+							// TODO: Comment below line and uncomment above line
+							depthColorMappers[framePair.first] = helper::frameToMat(framePair.second).clone();
+
+							initialColorMats[framePair.first] = helper::frameToMat(framePair.second).clone();
+							initialDepthMats[framePair.first] = helper::frameToMat(depthFrames[framePair.first]).clone();
+							rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
+							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+							// TODO: Comment below line and uncomment above line
+							depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)framePair.second.get_data(), cv::Mat::AUTO_STEP);
+						}
+
+					}
+					frameCount = 0;
+				}
+				else
+				{
+					// Add some descriptions
+					cv::Mat image;
+					std::vector<cv::Mat> images;
+					for (auto & frame : colorFrames)
+					{
+						cv::Rect2d bbox;
+						cv::Mat cameraImage = helper::frameToMat(frame.second);
+						images.push_back(cameraImage.clone());
+
+					}
+					cv::hconcat(images, image);
+
+					cv::putText(image,
+						"Idle mode",
+						cv::Point(10, 30),
+						cv::FONT_HERSHEY_SIMPLEX,
+						0.55,
+						cv::Scalar(15, 125, 255),
+						2);
+
+					cv::putText(image,
+						"Next detection in " + std::to_string((kFps * 4) - frameCount),
+						cv::Point(10, image.rows - 20),
+						cv::FONT_HERSHEY_SIMPLEX,
+						0.75,
+						cv::Scalar(255, 0, 255),
+						2);
+					cv::imshow(mainWindow, image);
+				}
+				frameCount++;
+
+			}
+
+
+		}
+		catch (const rs2::error & e)
+		{
+			std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+	}
+
+
+
+	/*
+		pcl_color_ptr pointcloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+		pointcloud->width = frameSize.width; //Dimensions must be initialized to use 2-D indexing 
+		pointcloud->height = frameSize.height;
+		pointcloud->resize(pointcloud->width*pointcloud->height);
+
+		for (int y = 0; y < pointcloud->height; y++)
+		{
+			for (int z = 0; z < roomLength; z++)
+			{
+				pcl::PointXYZRGB pLeft;
+				pLeft.y = y;
+				pLeft.z = z;
+				pLeft.x = 0;
+				pLeft.r = 255;
+				pLeft.g = 255;
+				pLeft.b = 255;
+
+				pcl::PointXYZRGB pRight;
+				pRight.y = y;
+				pRight.z = z;
+				pRight.x = pointcloud->width - 1;
+				pRight.r = 255;
+				pRight.g = 255;
+				pRight.b = 255;
+
+				pointcloud->points.push_back(pLeft);
+				pointcloud->points.push_back(pRight);
+			}
+			for (int x = 0; x < pointcloud->width; x++)
+			{
+				pcl::PointXYZRGB pFarWall;
+				pFarWall.y = y;
+				pFarWall.x = x;
+				pFarWall.z = roomLength - 1;
+				pFarWall.r = 255;
+				pFarWall.g = 255;
+				pFarWall.b = 255;
+				pointcloud->points.push_back(pFarWall);
+			}
+			
+		}
+
+		pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+		viewer->initCameraParameters();
+
+		viewer->addPointCloud<pcl::PointXYZRGB>(pointcloud, "cloud");
+
+
+		// 0.1 is the scale of the coordinate axes markers
+		// global coordinate system
+		//viewer->addCoordinateSystem(0.1);
+		viewer->addCoordinateSystem(0.1, "global");
+
+		while (1)
+		{
+			viewer->spinOnce();
+		}
+		
+
+		return 0;
+	*/
+
+	static int showActivityCloud(const std::string& fileName)
+	{
+		try
+		{
+			pcl_color_ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+			pcl::PLYReader Reader;
+			Reader.read(fileName, *cloud);
+
+			pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+			viewer->addPointCloud(cloud);
+			while (!viewer->wasStopped())
+			{
+				viewer->spinOnce();
+			}
+		}
+		catch (const std::exception & e)
+		{
+			std::cout << "Could not find activity.ply file at specified location" << std::endl;
+		}
+	}
+
 private:
 
 };

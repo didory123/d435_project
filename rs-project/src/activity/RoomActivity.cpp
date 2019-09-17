@@ -1,10 +1,10 @@
 #include "stdafx.h"
-#include "MultiCameraActivity.h"
+#include "RoomActivity.h"
 #include <cmath> 
 #include <pcl/filters/crop_box.h>
 
 
-MultiCameraActivity::MultiCameraActivity(
+RoomActivity::RoomActivity(
 	rs2::pipeline& pipe,
 	cv::Size frameSize,
 	const std::string& trackerType,
@@ -15,8 +15,20 @@ MultiCameraActivity::MultiCameraActivity(
 	std::map<std::string, Eigen::Matrix4d> calibrationMatrices,
 	const std::string& windowName,
 	ObjectDetector& detector,
-	DeviceWrapper& deviceWrapper
-)
+	DeviceWrapper& deviceWrapper,
+	float leftWidth,
+	float rightWidth,
+	float topHeight,
+	float bottomHeight,
+	float cameraDistance
+) 
+	:
+	leftWidth_(leftWidth),
+	rightWidth_(rightWidth),
+	topHeight_(topHeight),
+	bottomHeight_(bottomHeight),
+	cameraDistance_(cameraDistance),
+	finalOutputCloud_(new pcl::PointCloud<pcl::PointXYZRGB>)
 {
 	pipe_ = &pipe; // Any pipe from any device will do, since they should all have the same stream profile
 	deviceWrapper_ = &deviceWrapper;
@@ -49,11 +61,54 @@ MultiCameraActivity::MultiCameraActivity(
 	// Create a detector object for this activity
 	detector_ = &detector;
 
+	// Draw walls for the room scene pointcloud
+
+	for (float y = topHeight_ * -1; y < bottomHeight_; y += 0.01)
+	{
+		for (float z = 0.0; z < cameraDistance_; z += 0.01)
+		{
+			pcl::PointXYZRGB pLeft;
+			pLeft.y = y;
+			pLeft.z = z;
+			pLeft.x = leftWidth_ * -1;
+			pLeft.r = 255;
+			pLeft.g = 255;
+			pLeft.b = 255;
+
+			pcl::PointXYZRGB pRight;
+			pRight.y = y;
+			pRight.z = z;
+			pRight.x = rightWidth_;
+			pRight.r = 255;
+			pRight.g = 255;
+			pRight.b = 255;
+
+			finalOutputCloud_->points.push_back(pLeft);
+			finalOutputCloud_->points.push_back(pRight);
+		}
+		for (float x = leftWidth_ * -1; x < rightWidth_; x += 0.01)
+		{
+			pcl::PointXYZRGB pFarWall;
+			pFarWall.y = y;
+			pFarWall.x = x;
+			pFarWall.z = 0;
+			pFarWall.r = 255;
+			pFarWall.g = 255;
+			pFarWall.b = 255;
+			finalOutputCloud_->points.push_back(pFarWall);
+		}
+
+	}
+
+
 	// Begin activity
 	beginActivity(initialColorMats, initialDepthMats, depthColorMappers, personBboxes);
+
+	std::ofstream pointsInfoFile;
+	pointsInfoFile.open("./" + activityName_ + "activityInfo.txt");
 }
 
-void MultiCameraActivity::beginActivity(
+void RoomActivity::beginActivity(
 	std::map<std::string, cv::Mat> initialColorMats,
 	std::map<std::string, cv::Mat> initialDepthMats,
 	std::map<std::string, cv::Mat> depthColorMappers,
@@ -71,22 +126,14 @@ void MultiCameraActivity::beginActivity(
 	{
 		trackers_[bbox.first] = helper::createTrackerByName(trackerType_);
 		trackers_[bbox.first]->init(initialColorMats[bbox.first], bbox.second);
-		
+
 	}
 
 	// ===============================================================
 	// 2. Get initial snapshot of rooms
 	// ===============================================================
+	initialPositionsCapture(initialColorMats, initialDepthMats, initialColorMats);
 
-	workerThreads_.push_back(
-		new std::thread(
-			&MultiCameraActivity::initialPositionsCapture,
-			this,
-			initialColorMats,
-			initialDepthMats,
-			initialColorMats // TODO: UNCOMMENT //depthColorMappers
-		)
-	);
 	// ===============================================================
 	// 3. Main loop
 	// ===============================================================
@@ -142,7 +189,12 @@ void MultiCameraActivity::beginActivity(
 
 	finalPositionsCapture(finalColorMats, finalDepthMats, finalColorMats);//TODO: Uncomment: depthColorMappers);
 
+	pcl::PLYWriter plyWriter;
 
+	pcl::PCLPointCloud2 outputCloud;
+	pcl::toPCLPointCloud2(*finalOutputCloud_, outputCloud);
+
+	plyWriter.writeASCII("./" + activityName_ + "./activity.ply", outputCloud);
 	// Wait for the worker threads to finish before terminating activity
 	for (auto &i : workerThreads_)
 	{
@@ -150,7 +202,7 @@ void MultiCameraActivity::beginActivity(
 	}
 }
 /*
-void MultiCameraActivity::processFrame(cv::Mat rgbMat, cv::Mat depthMat, cv::Mat depthColor, std::string& deviceName, int& frameCount, cv::Mat& output, bool& isPersonInFrame)
+void RoomActivity::processFrame(cv::Mat rgbMat, cv::Mat depthMat, cv::Mat depthColor, std::string& deviceName, int& frameCount, cv::Mat& output, bool& isPersonInFrame)
 {
 
 
@@ -170,7 +222,7 @@ void MultiCameraActivity::processFrame(cv::Mat rgbMat, cv::Mat depthMat, cv::Mat
 		// Just spawn it here and don't worry about it
 		workerThreads_.push_back(
 			new std::thread(
-				&MultiCameraActivity::exportCloud,
+				&RoomActivity::exportCloud,
 				this,
 				depthMat.clone(),
 				depthColor.clone(),
@@ -182,7 +234,7 @@ void MultiCameraActivity::processFrame(cv::Mat rgbMat, cv::Mat depthMat, cv::Mat
 	}
 }*/
 
-void MultiCameraActivity::start() 
+void RoomActivity::start()
 {
 
 
@@ -209,7 +261,7 @@ void MultiCameraActivity::start()
 
 		// Create map of output images that we'll be storing the result frames in (after processing)
 		std::map<std::string, cv::Mat> outputImages, depthMats, depthColorMats;
-		std::map<std::string, std::map<std::string, cv::Rect2d>> bboxes; // <deviceName, <objectName, bbox>> 
+		std::map<std::string, cv::Rect2d> bboxes; // <deviceName, <objectName, bbox>> 
 
 		// Start processing threads for each captured RGB/depth frame from each device
 		for (auto& framePair : colorFrames)
@@ -226,13 +278,13 @@ void MultiCameraActivity::start()
 
 			// Store the depth frames for future use
 			depthMats[deviceName] = depthImage.clone();
-			
+
 			// TODO : uncomment
 			//depthColorMats[deviceName] = depthColor.clone();
 			depthColorMats[deviceName] = image.clone();
-			
 
-			// if 90 frames has passed, run detection
+
+			// if 60 frames has passed, run detection
 			if (frameCount == 90)
 			{
 				lock_.lock();
@@ -247,7 +299,7 @@ void MultiCameraActivity::start()
 					trackers_[deviceName]->init(image, bbox[deviceName]);
 					//tracker_->update(image, bbox);
 					//tracker->init(image, newbbox);
-					
+
 					//bbox = newbbox;
 				}
 			}
@@ -264,13 +316,14 @@ void MultiCameraActivity::start()
 				rectangle(image, bbox[deviceName], cv::Scalar(255, 0, 0), 2, 1);
 			}
 
-			bboxes[deviceName]["person"] = bbox[deviceName];
+			bboxes[deviceName] = bbox[deviceName];
 			outputImages[deviceName] = image.clone();
 			//std::thread * newWorkerThread = 
 
 		}
 
-		if (frameCount % 45 == 0 && isPersonInFrame)
+		// Record coordinates
+		if (frameCount % 30 == 0 && isPersonInFrame)
 		{
 			// Run the filters
 			// IMPORTANT: The filters must be run in the exact order as written below
@@ -301,7 +354,6 @@ void MultiCameraActivity::start()
 				depthMats[deviceName] = depthImage.clone();
 
 			}
-			// Every 60 frames, if the person is found in the room store the person's movement location as pointcloud
 
 
 
@@ -309,27 +361,20 @@ void MultiCameraActivity::start()
 			boost::posix_time::ptime timeLocal =
 				boost::posix_time::second_clock::local_time();
 
-			// Turns out the cv::Mat copy constructor doesn't do a deep copy. You need to specify clone() to do a deep copy otherwise
-			// the thread will throw an error once this function's matrices go out of scope
+			// Record the person's centroid coordinate and draw trajectory line
+			recordCoordinate(depthMats, bboxes);
 
-			// Spawn a worker thread that exports the ply data
-			// This thread's join will be handled at the very end of the activity's life cycle
-			// Just spawn it here and don't worry about it
-
-			//exportMergedCloud(depthMats, depthColorMats, bboxes, std::string("./" + activityName_ + "/coordinates/timestamp_" + std::to_string(timeLocal.time_of_day().total_milliseconds()) + ".ply"));
-
-			//exportMergedCloudFromFrames(depthFrames, bboxes, std::string("./" + activityName_ + "/coordinates/timestamp_" + std::to_string(timeLocal.time_of_day().total_milliseconds()) + ".ply"));
-
-			workerThreads_.push_back(
+			/*workerThreads_.push_back(
 				new std::thread(
-					&MultiCameraActivity::exportMergedCloud,
+					&RoomActivity::exportMergedCloud,
 					this,
 					depthMats,
 					depthColorMats,
 					bboxes,
-					std::string("./" + activityName_ + "/coordinates/timestamp_" + std::to_string(timeLocal.time_of_day().total_milliseconds()) + ".ply")
+					std::string("./" + activityName_ + "/coordinates/timestamp_" + std::to_string(timeLocal.time_of_day().total_milliseconds()) + ".ply"),
+					true
 				)
-			);
+			);*/
 		}
 
 		if (frameCount == 90)
@@ -346,12 +391,12 @@ void MultiCameraActivity::start()
 		{
 			t->join();
 		}
-		
+
 		// Handy c++ trick for deallocating all objects within a vector
 		std::vector<std::thread *>().swap(processThreads);*/
 
 		cv::Mat image;
-		
+
 
 		// Images that we'll combine to write to video file
 		std::vector<cv::Mat> images;
@@ -360,7 +405,7 @@ void MultiCameraActivity::start()
 		for (auto& frame : outputImages)
 		{
 			images.push_back(frame.second);
-			
+
 		}
 
 		// Concatenate the images
@@ -380,6 +425,7 @@ void MultiCameraActivity::start()
 				cv::Point(10, image.rows - 60),
 				cv::FONT_HERSHEY_SIMPLEX,
 				0.75,
+				
 				cv::Scalar(255, 0, 255),
 				2);
 		}
@@ -405,7 +451,7 @@ void MultiCameraActivity::start()
 		cv::imshow(windowName_, image);
 
 		// if 120 frames (or 4 seconds) have passed since a person was not found in the frame, auto exit
-		if (personMissingCounter > 120)
+		if (personMissingCounter > 90)
 		{
 			break;
 		}
@@ -415,83 +461,9 @@ void MultiCameraActivity::start()
 	output_.release();
 }
 
-void MultiCameraActivity::initialCapture(cv::Mat initialColorMat, cv::Mat initialDepthMat, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG)
-{
-	// Get initial snapshot of all objects in the room
-	lock_.lock();
-	cv::Mat initialPositions = detector_->detectAllObjects(initialColorMat, initialDetectedObjectsPerDevice_[deviceName]);
-	lock_.unlock();
-
-	// Initialize pointcloud
-	//pcl_ptr initialObjectsCloud(new pcl::PointCloud<pcl::PointXYZ>);
-	pcl_color_ptr initialObjectsCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-	initialObjectsCloud->width = initialColorMat.cols; //Dimensions must be initialized to use 2-D indexing 
-	initialObjectsCloud->height = initialColorMat.rows;
-	initialObjectsCloud->resize(initialObjectsCloud->width*initialObjectsCloud->height);
-
-	for (auto &i : initialDetectedObjectsPerDevice_[deviceName])
-	{
-		// ===============================================================
-		// 1. Add depth information to each object
-		// ===============================================================
-		// If the ROI extends outside the frame (because the detector will try to extrapolate)
-		// there will be an error. Therefore we trim the bbox to fit inside the frame
-		cv::Rect2d bboxToFitInMat(std::max(0.0, i.second.x),
-			std::max(0.0, i.second.y),
-			std::abs(i.second.x) + i.second.width <= initialDepthMat.cols ? i.second.width : initialDepthMat.cols - std::abs(i.second.x),
-			std::abs(i.second.y) + i.second.height <= initialDepthMat.rows ? i.second.height : initialDepthMat.rows - std::abs(i.second.y));
-
-		// Calculate real distance of the object by taking the mean value of the depth points in the ROI around the target object
-		cv::Scalar m = cv::mean(initialDepthMat(bboxToFitInMat));
-
-
-
-		// print depth information onto the image
-		// print depth information onto the image
-		cv::putText(initialPositions,
-			std::to_string(m[0]) + "mm",
-			cv::Point(i.second.x, i.second.y + bboxToFitInMat.height / 2),
-			cv::FONT_HERSHEY_SIMPLEX,
-			0.45,
-			cv::Scalar(255, 255, 255),
-			1);
-
-
-
-		// ===============================================================
-		// 2. Create pointcloud for each detected object
-		// ===============================================================
-		if (exportCloud)
-		{
-			*initialObjectsCloud += *helper::depthMatToColorPCL(initialDepthMat, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
-		}
-	}
-
-	if (exportCloud)
-	{
-		pcl::PCLPointCloud2 outputCloud;
-		pcl::toPCLPointCloud2(*initialObjectsCloud, outputCloud);
-
-		pcl::PLYWriter plyWriter;
-		plyWriter.writeASCII(pathToPLY, outputCloud);
-	}
-	//pcl::io::savePCDFileASCII("./" + activityName_ + "/initialPositions.pcd", *initialObjectsCloud);
-
-	// display all detected objects in the frame
-	//cv::imshow(initialWindow, initialPositions);
-
-
-	// Store the initial snapshot as an image file
-	cv::imwrite(pathToPNG, initialPositions);
-
-	//cv::putText(initialColorMat, "Press any key to begin manual selection of a person's bounding box", cv::Point(100, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255), 2);
-	//cv::imshow(mainWindow, initialColorMat);
-}
-
-
-void MultiCameraActivity::initialPositionsCapture
+void RoomActivity::initialPositionsCapture
 (
-	const std::map<std::string, cv::Mat>& initialColorMats, 
+	const std::map<std::string, cv::Mat>& initialColorMats,
 	const std::map<std::string, cv::Mat>& initialDepthMats,
 	const std::map<std::string, cv::Mat>& depthColorMappers
 )
@@ -507,14 +479,9 @@ void MultiCameraActivity::initialPositionsCapture
 		cv::Mat initialPositions = detector_->detectAllObjects(image, initialDetectedObjectsPerDevice_[deviceName]);
 		lock_.unlock();
 
-		pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-		pointCloud->width = image.cols; //Dimensions must be initialized to use 2-D indexing 
-		pointCloud->height = image.rows;
-		pointCloud->resize(pointCloud->width*pointCloud->height);
-
 		for (auto &objects : initialDetectedObjectsPerDevice_[deviceName])
 		{
-			std::string objectName = objects.first;
+			std::string objectName = objects.first + " initial position";
 			cv::Rect2d objectBbox = objects.second;
 
 			cv::Mat initialDepthMat = initialDepthMats.at(deviceName);
@@ -529,11 +496,12 @@ void MultiCameraActivity::initialPositionsCapture
 				std::abs(objectBbox.x) + objectBbox.width <= initialDepthMat.cols ? objectBbox.width : initialDepthMat.cols - std::abs(objectBbox.x),
 				std::abs(objectBbox.y) + objectBbox.height <= initialDepthMat.rows ? objectBbox.height : initialDepthMat.rows - std::abs(objectBbox.y));
 
+			// Draw green colored pointcloud
+			addToFinalOutputCloud(initialDepthMat, bboxToFitInMat, deviceName, objectName, std::make_tuple(0, 255, 0));
+
 			// Calculate real distance of the object by taking the mean value of the depth points in the ROI around the target object
 			cv::Scalar m = cv::mean(initialDepthMat(bboxToFitInMat));
 
-
-			// print depth information onto the image
 			// print depth information onto the image
 			cv::putText(initialPositions,
 				std::to_string(m[0]) + "mm",
@@ -554,109 +522,18 @@ void MultiCameraActivity::initialPositionsCapture
 	// ===============================================================
 	// 2. Create pointcloud for each detected object
 	// ===============================================================
-	exportMergedCloud(initialDepthMats, depthColorMappers, initialDetectedObjectsPerDevice_, "./" + activityName_ + "/initialPositions.ply");
-	
+	//exportMergedCloud(initialDepthMats, depthColorMappers, initialDetectedObjectsPerDevice_, "./" + activityName_ + "/initialPositions.ply", false);
+
 
 }
 
-void MultiCameraActivity::finalCapture(cv::Mat finalSnapshotColor, cv::Mat finalSnapshotDepth, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG)
-{
-	// in theory this should never be reached
-	lock_.lock();
-	cv::Mat finalPositions = detector_->detectAllObjects(finalSnapshotColor, finalDetectedObjectsPerDevice_[deviceName]);
-	lock_.unlock();
-
-	// Initialize pointcloud
-	pcl_color_ptr finalObjectsCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-	finalObjectsCloud->width = finalSnapshotDepth.cols; //Dimensions must be initialized to use 2-D indexing 
-	finalObjectsCloud->height = finalSnapshotDepth.rows;
-	finalObjectsCloud->resize(finalObjectsCloud->width*finalObjectsCloud->height);
-
-	// Compare the two maps and if there is a difference in coordinates, update the color in the final image
-	for (auto &i : finalDetectedObjectsPerDevice_[deviceName])
-	{
-		// ===============================================================
-		// 1. Draw specific colored bounding boxes for each detected object
-		// ===============================================================
-
-		// An object in the new map cannot be found in the original map, means this is a new object
-		// Draw a red colored rectangle
-		if (initialDetectedObjects_.count(i.first) == 0)
-		{
-			cv::rectangle(finalPositions, i.second, cv::Scalar(0, 0, 255), 2);
-		}
-		// If the object does exist in the initial snapshot, compare the new bounding box with the previous one
-		// If different, means the object has changed
-		// Draw a pink colored rectangle
-		else if (!ObjectDetector::bboxesEqual(i.second, initialDetectedObjects_[i.first]))
-		{
-			cv::rectangle(finalPositions, i.second, cv::Scalar(221, 0, 255), 2);
-		}
-
-		// ===============================================================
-		// 2. Add depth information to each object
-		// ===============================================================
-
-		// If the ROI extends outside the frame (because the detector will try to extrapolate)
-		// there will be an error. Therefore we trim the bbox to fit inside the frame
-		cv::Rect2d bboxToFitInMat(std::max(0.0, i.second.x),
-			std::max(0.0, i.second.y),
-			std::abs(i.second.x) + i.second.width <= finalSnapshotDepth.cols ? i.second.width : finalSnapshotDepth.cols - std::abs(i.second.x),
-			std::abs(i.second.y) + i.second.height <= finalSnapshotDepth.rows ? i.second.height : finalSnapshotDepth.rows - std::abs(i.second.y));
-
-		// Calculate real distance of the object by taking the mean value of the depth points in the ROI around the target object
-		cv::Scalar m = cv::mean(finalSnapshotDepth(bboxToFitInMat));
-
-
-		// print depth information onto the image
-		cv::putText(finalPositions,
-			std::to_string(m[0]) + "mm",
-			cv::Point(i.second.x, i.second.y + bboxToFitInMat.height / 2),
-			cv::FONT_HERSHEY_SIMPLEX,
-			0.45,
-			cv::Scalar(255, 255, 255),
-			1);
-
-		// ===============================================================
-		// 3. Create pointcloud for each detected object
-		// ===============================================================
-		if (exportCloud)
-		{
-			*finalObjectsCloud += *helper::depthMatToColorPCL(finalSnapshotDepth, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
-		}
-	}
-	if (exportCloud)
-	{
-		pcl::PCLPointCloud2 outputCloud;
-		pcl::toPCLPointCloud2(*finalObjectsCloud, outputCloud);
-
-		pcl::PLYWriter plyWriter;
-		plyWriter.writeASCII(pathToPLY, outputCloud);
-
-	}
-	// display all detected objects in the frame
-	//cv::imshow(initialWindow, initialPositions);
-
-	// Store the initial snapshot as an image file
-	cv::imwrite(pathToPNG, finalPositions);
-
-	//cv::putText(initialColorMat, "Press any key to begin manual selection of a person's bounding box", cv::Point(100, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255), 2);
-	//cv::imshow(mainWindow, initialColorMat);
-}
-
-void MultiCameraActivity::finalPositionsCapture
+void RoomActivity::finalPositionsCapture
 (
 	const std::map<std::string, cv::Mat>& finalColorMats,
 	const std::map<std::string, cv::Mat>& finalDepthMats,
 	const std::map<std::string, cv::Mat>& depthColorMappers
 )
 {
-
-
-
-
-
-
 
 	// Get initial snapshot of all objects in the room
 	for (auto & colorMat : finalColorMats)
@@ -668,14 +545,9 @@ void MultiCameraActivity::finalPositionsCapture
 		cv::Mat finalPositions = detector_->detectAllObjects(image, finalDetectedObjectsPerDevice_[deviceName]);
 		lock_.unlock();
 
-		pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-		pointCloud->width = image.cols; //Dimensions must be initialized to use 2-D indexing 
-		pointCloud->height = image.rows;
-		pointCloud->resize(pointCloud->width*pointCloud->height);
-
 		for (auto &objects : finalDetectedObjectsPerDevice_[deviceName])
 		{
-			std::string objectName = objects.first;
+			std::string objectName = objects.first + " final position";
 			cv::Rect2d objectBbox = objects.second;
 
 			cv::Mat finalDepthMat = finalDepthMats.at(deviceName);
@@ -684,29 +556,32 @@ void MultiCameraActivity::finalPositionsCapture
 			// 1. Draw specific colored bounding boxes for each detected object
 			// ===============================================================
 
-			// An object in the new map cannot be found in the original map, means this is a new object
-			// Draw a red colored rectangle
-			if (initialDetectedObjectsPerDevice_[deviceName].count(objectName) == 0)
-			{
-				cv::rectangle(finalPositions, objectBbox, cv::Scalar(0, 0, 255), 2);
-			}
-			// If the object does exist in the initial snapshot, compare the new bounding box with the previous one
-			// If different, means the object has changed
-			// Draw a pink colored rectangle
-			else if (!ObjectDetector::bboxesEqual(objectBbox, initialDetectedObjectsPerDevice_[deviceName][objectName]))
-			{
-				cv::rectangle(finalPositions, objectBbox, cv::Scalar(221, 0, 255), 2);
-			}
-
-			// ===============================================================
-			// 2. Add depth information to each object
-			// ===============================================================
 			// If the ROI extends outside the frame (because the detector will try to extrapolate)
 			// there will be an error. Therefore we trim the bbox to fit inside the frame
 			cv::Rect2d bboxToFitInMat(std::max(0.0, objectBbox.x),
 				std::max(0.0, objectBbox.y),
 				std::abs(objectBbox.x) + objectBbox.width <= finalDepthMat.cols ? objectBbox.width : finalDepthMat.cols - std::abs(objectBbox.x),
 				std::abs(objectBbox.y) + objectBbox.height <= finalDepthMat.rows ? objectBbox.height : finalDepthMat.rows - std::abs(objectBbox.y));
+
+			// An object in the new map cannot be found in the original map, means this is a new object
+			// Draw a red colored rectangle/draw red colored pointcloud
+			if (initialDetectedObjectsPerDevice_[deviceName].count(objectName) == 0)
+			{
+				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(255, 0, 0), 2);
+				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, objectName, std::make_tuple(255, 0, 0));
+			}
+			// If the object does exist in the initial snapshot, compare the new bounding box with the previous one
+			// If different, means the object has changed
+			// Draw a pink colored rectangle/draw blue colored pointcloud
+			else if (!ObjectDetector::bboxesEqual(objectBbox, initialDetectedObjectsPerDevice_[deviceName][objectName]))
+			{
+				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(221, 0, 255), 2);
+				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, objectName, std::make_tuple(0, 0, 255));
+			}
+
+			// ===============================================================
+			// 2. Add depth information to each object
+			// ===============================================================
 
 			// Calculate real distance of the object by taking the mean value of the depth points in the ROI around the target object
 			cv::Scalar m = cv::mean(finalDepthMat(bboxToFitInMat));
@@ -733,11 +608,121 @@ void MultiCameraActivity::finalPositionsCapture
 	// ===============================================================
 	// 2. Create pointcloud for each detected object
 	// ===============================================================
-	exportMergedCloud(finalDepthMats, depthColorMappers, finalDetectedObjectsPerDevice_, "./" + activityName_ + "/finalPositions.ply");
+	
+
+	//exportMergedCloud(finalDepthMats, depthColorMappers, finalDetectedObjectsPerDevice_, "./" + activityName_ + "/finalPositions.ply", );
 
 }
 
-void MultiCameraActivity::exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::Rect2d bbox, const std::string& deviceName, const std::string& path)
+void RoomActivity::addToFinalOutputCloud
+(
+	const cv::Mat& depthMat,
+	const cv::Rect2d & bbox,
+	const std::string& deviceName,
+	const std::string& objectName,
+	std::tuple<int, int, int> color
+)
+{
+	int frameWidth = depthMat.cols;
+	int frameHeight = depthMat.rows;
+
+	// If the ROI extends outside the frame there will be an error. Therefore we trim the bbox to fit inside the frame
+	cv::Rect2d bboxToFitInMat(
+		std::max(0.0, bbox.x),
+		std::max(0.0, bbox.y),
+		std::abs(bbox.x) + bbox.width <= frameWidth ? bbox.width : frameWidth - std::abs(bbox.x),
+		std::abs(bbox.y) + bbox.height <= frameHeight ? bbox.height : frameHeight - std::abs(bbox.y));
+
+	pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+	*pointCloud = *helper::depthMatToColorPCL(depthMat.clone(), depthMat.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+
+	// Apply transformation to the pointcloud based on device's position in the real world
+	pointCloud = helper::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
+
+
+
+
+	pcl::PointXYZRGB minPt, maxPt;
+	pcl::getMinMax3D(*pointCloud, minPt, maxPt);
+
+	double min = minPt.z;
+	double max = maxPt.z;
+
+	// Calculate centroid point
+	float avgx = 0.0, avgy = 0.0, avgz = 0.0, sumx = 0.0, sumy = 0.0, sumz = 0.0;
+	int pointsSize = 0;
+
+	// Find sum of all valid points
+	// pointsSize is the number of all valid points
+	// sum / pointsSize give us the average (centroid)
+	for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = pointCloud->begin(); cloud_it != pointCloud->end(); ++cloud_it)
+	{
+		avgx += cloud_it->x;
+		avgy += cloud_it->y;
+		avgz += cloud_it->z;
+		pointsSize++;
+	}
+
+	// Check pointsSize > 0 to avoid division by zero
+	if (pointsSize > 0)
+	{
+		avgx = avgx / pointsSize;
+		avgy = avgy / pointsSize;
+		avgz = avgz / pointsSize;
+	}
+
+	// The centroid point will be the average of all the centroid points calculated from all cameras
+	pcl::PointXYZRGB centroidPoint(avgx, avgy, avgz);
+
+
+	double lut_scale = 1.0; // In case the cloud is flat on the chosen direction (x,y or z) i.e. max == min
+
+	// Make sure to avoid divide by zero
+	if (min != max)
+	{
+		// Compute LUT scaling to fit the full histogram spectrum
+		lut_scale = 255.0 / (max - min);  // max is 255, min is 0
+	}
+
+	for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = pointCloud->begin(); cloud_it != pointCloud->end(); ++cloud_it)
+	{
+		// Points that are closer will give higher value
+		// i.e. for closest points, value will give values closer to 255 * 3
+		//auto value = std::lround((cloud_it->z - min) * lut_scale);
+
+		cloud_it->r = std::get<0>(color);
+		cloud_it->g = std::get<1>(color);
+		cloud_it->b = std::get<2>(color);
+
+		/*if (color == "red")
+		{
+			cloud_it->r = 255;
+			cloud_it->g = 255 - value;
+			cloud_it->b = 255 - value;
+		}
+		else if (color == "green")
+		{
+			cloud_it->r = 255 - value;
+			cloud_it->g = 255;
+			cloud_it->b = 255 - value;
+		}
+		else
+		{
+			cloud_it->r = 255 - value;
+			cloud_it->g = 255 - value;
+			cloud_it->b = 255;
+		}*/
+
+	}
+
+	finalOutputCloudLock_.lock();
+	*finalOutputCloud_ += *pointCloud;
+	finalOutputCloudLock_.unlock();
+
+}
+
+void RoomActivity::exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::Rect2d bbox, const std::string& deviceName, const std::string& path)
 {
 	pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 	pointCloud->width = depthData.cols; //Dimensions must be initialized to use 2-D indexing 
@@ -766,12 +751,181 @@ void MultiCameraActivity::exportCloud(cv::Mat depthData, cv::Mat depthColorMappe
 	//Activity::exportPointCloud(depthData, depthColorMapper, bbox, path);
 }
 
-void MultiCameraActivity::exportMergedCloud
+void RoomActivity::recordCoordinate
 (
-	const std::map<std::string, cv::Mat>& depthMats, 
-	const std::map<std::string, cv::Mat>& depthColorMappers, 
+	const std::map<std::string, cv::Mat>& depthMats,
+	const std::map<std::string, cv::Rect2d>& bboxes
+)
+{
+	int frameWidth = depthMats.begin()->second.cols;
+	int frameHeight = depthMats.begin()->second.rows;
+
+	std::cout << frameWidth << " " << frameHeight << std::endl;
+
+	/*pointCloud->width = frameWidth; //Dimensions must be initialized to use 2-D indexing
+	pointCloud->height = frameHeight;
+	pointCloud->resize(pointCloud->width*pointCloud->height);*/
+	pcl_color_ptr centroidPointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+	float sum_x = 0, sum_y = 0, sum_z = 0;
+	int bbox_count = 0; // keep a separate counter for all valid person bounding boxes in case some frames don't have a bbox
+
+	for (auto& framePair : depthMats)
+	{
+		std::string deviceName = framePair.first;
+		cv::Mat depthData = framePair.second;
+
+		// Check that a person has been detected in this frame i.e. this camera has detected a person
+		if (bboxes.count(deviceName) == 0)
+		{
+			continue;
+		}
+		else
+		{
+			bbox_count++;
+		}
+
+		// Get the detected person's bbox
+		cv::Rect2d bbox = bboxes.at(deviceName);
+
+		// If the ROI extends outside the frame there will be an error. Therefore we trim the bbox to fit inside the frame
+		cv::Rect2d bboxToFitInMat(
+			std::max(0.0, bbox.x),
+			std::max(0.0, bbox.y),
+			std::abs(bbox.x) + bbox.width <= frameWidth ? bbox.width : frameWidth - std::abs(bbox.x),
+			std::abs(bbox.y) + bbox.height <= frameHeight ? bbox.height : frameHeight - std::abs(bbox.y));
+
+		pcl_color_ptr currPointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+		std::cout << "Point cloud for : " << deviceName << std::endl;
+
+		*currPointCloud = *helper::depthMatToColorPCL(depthData.clone(), depthData.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+
+		// Apply transformation to the pointcloud based on device's position in the real world
+		currPointCloud = helper::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
+
+		// Calculate centroid point
+		float avgx = 0.0, avgy = 0.0, avgz = 0.0;
+		int pointsSize = 0;
+
+		// Find sum of all valid points
+		// pointsSize is the number of all valid points
+		// sum / pointsSize give us the average (centroid)
+		for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = currPointCloud->begin(); cloud_it != currPointCloud->end(); ++cloud_it)
+		{
+			avgx += cloud_it->x;
+			avgy += cloud_it->y;
+			avgz += cloud_it->z;
+			pointsSize++;
+		}
+
+		// Check pointsSize > 0 to avoid division by zero
+		if (pointsSize > 0)
+		{
+
+			sum_x = avgx / pointsSize;
+			sum_y = avgy / pointsSize;
+			sum_z = avgz / pointsSize;
+
+		}
+	}
+
+
+	// The centroid point will be the average of all the centroid points calculated from all cameras
+	pcl::PointXYZRGB centroidPoint;
+
+	centroidPoint.x = sum_x / bbox_count;
+	centroidPoint.y = sum_y / bbox_count;
+	centroidPoint.z = sum_z / bbox_count;
+
+	// Mark the centroid point as pink
+	centroidPoint.r = 255;
+	centroidPoint.g = 20;
+	centroidPoint.b = 147;
+	centroidPointCloud->points.push_back(centroidPoint);
+
+	// Scatter some points next to the centroid point for better visibility
+	for (int i = 0; i < 3; i++)
+	{
+		pcl::PointXYZRGB pointAdj1 = centroidPoint;
+		pcl::PointXYZRGB pointAdj2 = centroidPoint;
+		if (i == 0)
+		{
+			pointAdj1.x += 0.005;
+			pointAdj2.x -= 0.005;
+		}
+		else if (i == 1)
+		{
+			pointAdj1.y += 0.005;
+			pointAdj2.y -= 0.005;
+		}
+		else if (i == 3)
+		{
+			pointAdj1.z += 0.005;
+			pointAdj2.z -= 0.005;
+		}
+		centroidPointCloud->points.push_back(pointAdj1);
+		centroidPointCloud->points.push_back(pointAdj2);
+	}
+
+	// Ensure that this isn't the first centroid point calculated (i.e. first recorded coordinate)
+	if (prevCentroidPoint_ != nullptr)
+	{
+		// Parametric equation
+		// Line in 3D = p1 + t*v = <x0, y0, z0> + t*<v1, v2, v3>
+		// v = p2 - p1  where v = lineVector
+		// t is the parametric variable
+
+		float v1 = centroidPoint.x - prevCentroidPoint_->x;
+		float v2 = centroidPoint.y - prevCentroidPoint_->y;
+		float v3 = centroidPoint.z - prevCentroidPoint_->z;
+
+
+		pcl::PointXYZRGB newCentroidPoint = *prevCentroidPoint_;
+
+		float distance =
+			(centroidPoint.x - prevCentroidPoint_->x) * (centroidPoint.x - prevCentroidPoint_->x) +
+			(centroidPoint.y - prevCentroidPoint_->y) * (centroidPoint.y - prevCentroidPoint_->y) +
+			(centroidPoint.z - prevCentroidPoint_->z) * (centroidPoint.z - prevCentroidPoint_->z);
+
+		int count = 1;
+		while
+			(
+			(newCentroidPoint.x - prevCentroidPoint_->x) * (newCentroidPoint.x - prevCentroidPoint_->x) +
+				(newCentroidPoint.y - prevCentroidPoint_->y) * (newCentroidPoint.y - prevCentroidPoint_->y) +
+				(newCentroidPoint.z - prevCentroidPoint_->z) * (newCentroidPoint.z - prevCentroidPoint_->z) < distance
+				)
+		{
+			newCentroidPoint.x = prevCentroidPoint_->x + count * 0.001 * v1;
+			newCentroidPoint.y = prevCentroidPoint_->y + count * 0.001 * v2;
+			newCentroidPoint.z = prevCentroidPoint_->z + count * 0.001 * v3;
+
+			centroidPointCloud->points.push_back(newCentroidPoint);
+
+			count++;
+		}
+
+	}
+	else
+	{
+		// Record the new centroid point
+		prevCentroidPoint_ = new pcl::PointXYZRGB(centroidPoint);
+	}
+
+	// Record the new centroid point
+	*prevCentroidPoint_ = centroidPoint;
+
+	*finalOutputCloud_ += *centroidPointCloud;
+
+}
+
+void RoomActivity::exportMergedCloud
+(
+	const std::map<std::string, cv::Mat>& depthMats,
+	const std::map<std::string, cv::Mat>& depthColorMappers,
 	const std::map<std::string, std::map<std::string, cv::Rect2d>>& bboxes,
-	const std::string& path
+	const std::string& path,
+	std::tuple<int, int, int> rgbColor
 )
 {
 	int frameWidth = depthMats.begin()->second.cols;
@@ -780,7 +934,7 @@ void MultiCameraActivity::exportMergedCloud
 	std::cout << frameWidth << " " << frameHeight << std::endl;
 
 	pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-	/*pointCloud->width = frameWidth; //Dimensions must be initialized to use 2-D indexing 
+	/*pointCloud->width = frameWidth; //Dimensions must be initialized to use 2-D indexing
 	pointCloud->height = frameHeight;
 	pointCloud->resize(pointCloud->width*pointCloud->height);*/
 
@@ -825,51 +979,32 @@ void MultiCameraActivity::exportMergedCloud
 
 	plyWriter.writeASCII(path + "RGB.ply", outputCloudRGB);
 
+
+
 	pcl::PointXYZRGB minPt, maxPt;
 	pcl::getMinMax3D(*pointCloud, minPt, maxPt);
 
 	double min = minPt.z;
 	double max = maxPt.z;
 
-	// Compute LUT scaling to fit the full histogram spectrum
-	double lut_scale = (255.0 * 3) / (max - min);  // max is 255, min is 0
+	double lut_scale = 1.0; // In case the cloud is flat on the chosen direction (x,y or z) i.e. max == min
 
-	if (min == max)  // In case the cloud is flat on the chosen direction (x,y or z)
-		lut_scale = 1.0;  // Avoid rounding error in boost
+	// Make sure to avoid divide by zero
+	if (min != max)  
+	{
+		// Compute LUT scaling to fit the full histogram spectrum
+		lut_scale = 255.0 / (max - min);  // max is 255, min is 0
+	}
 
 	for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = pointCloud->begin(); cloud_it != pointCloud->end(); ++cloud_it)
 	{
 		// Points that are closer will give higher value
 		// i.e. for closest points, value will give values closer to 255 * 3
-		int value = std::lround((cloud_it->z - min) * lut_scale);
+		auto value = std::lround((cloud_it->z - min) * lut_scale);
 
-
-
-		// Blue -> Green -> Red (~ rainbow)
-        
-		if (value <= 255)
-		{
-			cloud_it->r = 0;
-			cloud_it->g = value;
-			cloud_it->b = 255 - value;
-		}
-		else if (value > 255 && value <= 510)
-		{
-			// Convert to 255 scale
-			int scaledValue = value - 255;
-			cloud_it->r = scaledValue;
-			cloud_it->g = 255;
-			cloud_it->b = 0;
-		}
-		// Closest points (value > 510)
-		else
-		{
-			// Convert to 255 scale
-			int scaledValue = value - (255 * 2);
-			cloud_it->r = 255;
-			cloud_it->g = 255 - scaledValue;
-			cloud_it->b = 0;
-		}
+		cloud_it->r = std::max(cloud_it->r, static_cast<uint8_t>(255 - value));
+		cloud_it->g = std::max(cloud_it->g, static_cast<uint8_t>(255 - value));
+		cloud_it->b = std::max(cloud_it->b, static_cast<uint8_t>(255 - value));
 
 	}
 
@@ -878,72 +1013,6 @@ void MultiCameraActivity::exportMergedCloud
 	pcl::toPCLPointCloud2(*pointCloud, outputCloud);
 
 	//pcl::PLYWriter plyWriter;
-
-	plyWriter.writeASCII(path, outputCloud);
-
-	//Activity::exportPointCloud(depthData, depthColorMapper, bbox, path);
-}
-
-void MultiCameraActivity::exportMergedCloudFromFrames
-(
-	std::map<std::string, rs2::frame> depthFrames,
-	std::map<std::string, cv::Rect2d> bboxes,
-	const std::string& path
-)
-{
-	pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-	pointCloud->width = LARGE_DIMS.width; //Dimensions must be initialized to use 2-D indexing 
-	pointCloud->height = LARGE_DIMS.height;
-	pointCloud->resize(pointCloud->width*pointCloud->height);
-
-	rs2::colorizer colorMapper;
-
-	for (auto& frame : depthFrames)
-	{
-		rs2::points points;
-
-		rs2::pointcloud pc;
-
-		rs2::frame coloredDepth = colorMapper.process(frame.second);
-
-		pc.map_to(coloredDepth);
-		points = pc.calculate(coloredDepth);
-
-		pcl_color_ptr colorCloud = helper::pointsToColorPCL(points, frame.second);
-
-		//cv::Mat depthData = frame.second;
-		//cv::Mat depthColorMapper = depthColorMappers[frame.first];
-		//cv::Rect2d bbox = bboxes[frame.first];
-
-		//// If the ROI extends outside the frame there will be an error. Therefore we trim the bbox to fit inside the frame
-		//cv::Rect2d bboxToFitInMat(
-		//	std::max(0.0, bbox.x),
-		//	std::max(0.0, bbox.y),
-		//	std::abs(bbox.x) + bbox.width <= frameWidth ? bbox.width : frameWidth - std::abs(bbox.x),
-		//	std::abs(bbox.y) + bbox.height <= frameHeight ? bbox.height : frameHeight - std::abs(bbox.y));
-
-		//pcl_color_ptr currPointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-		//*currPointCloud = *helper::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
-
-		//// Apply transformation to the pointcloud based on device's position in the real world
-		colorCloud = helper::affineTransformMatrix(colorCloud, calibrationMatrices_[frame.first].inverse());
-
-		//// Merge pointcloud
-		*pointCloud += *colorCloud;
-
-		//pcl::CropBox<pcl::PointXYZRGBA> boxFilter;
-		//boxFilter.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-		//boxFilter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
-		//boxFilter.setInputCloud(colorCloud);
-		//boxFilter.filter(*bodyFiltered);
-		//colorCloud
-	}
-
-	pcl::PCLPointCloud2 outputCloud;
-	pcl::toPCLPointCloud2(*pointCloud, outputCloud);
-
-	pcl::PLYWriter plyWriter;
 
 	plyWriter.writeASCII(path, outputCloud);
 

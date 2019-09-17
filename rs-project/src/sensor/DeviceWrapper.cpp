@@ -100,7 +100,7 @@ void DeviceWrapper::enableDevice(const rs2::device& dev, std::vector<stream_prof
 		}
 	} 
 
-	// If physical wiring is used, set one to master and one to slave
+	/*// If physical wiring is used, set one to master and one to slave
 	if (!_hasMaster)
 	{
 		 depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 1);
@@ -110,7 +110,7 @@ void DeviceWrapper::enableDevice(const rs2::device& dev, std::vector<stream_prof
 	{
 		depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
 	}
-	std::cout << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE);
+	std::cout << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE);*/
 
 	// Enable stream profiles
 	for (auto stream : streamProfiles)

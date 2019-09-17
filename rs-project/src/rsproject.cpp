@@ -33,9 +33,10 @@ int main()
 	std::cout << "Input 5 to test mapping multiple, 3D pointclouds to real world coordinates" << std::endl;
 	std::cout << "Input 6 to test YOLO object detection" << std::endl;
 	std::cout << "Input 7 to test object tracking" << std::endl;
-	std::cout << "Input 8 to test multicamera automatic personperson tracking" << std::endl;
-
+	std::cout << "Input 8 to test multicamera automatic person tracking" << std::endl;
 	std::cout << "Input 9 to test automatic person tracking" << std::endl;
+	std::cout << "Input 10 to test constructing 3D scene of activity in room" << std::endl;
+
 	// get user input
 	while (std::getline(std::cin, userInput))
 	{	
@@ -126,7 +127,23 @@ int main()
 				}
 				return TestDriver::autoObjectTracking(frameSize);
 			}
-			
+		}
+		else if (userInput == "11")
+		{
+			std::string directoryName = "";
+			std::cout << "Input the name of the activity directory from which to read" << std::endl;
+			std::getline(std::cin, directoryName);
+	
+			std::string cloudFileName = "./" + directoryName + "/activity.ply", *cloud;
+			if (boost::filesystem::exists(cloudFileName))
+			{
+				return TestDriver::showActivityCloud(directoryName);
+			}
+			else
+			{
+				std::cout << "Could not find activity.ply file at specified location" << std::endl;
+				return 0;
+			}
 
 		}
 		else

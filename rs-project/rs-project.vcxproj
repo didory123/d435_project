@@ -163,8 +163,10 @@
     <ClInclude Include="include\targetver.h" />
     <ClInclude Include="include\ObjectDetector.h" />
     <ClInclude Include="include\TestDriver.hpp" />
+    <ClInclude Include="include\RoomActivity.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\activity\RoomActivity.cpp" />
     <ClCompile Include="src\activity\Activity.cpp" />
     <ClCompile Include="src\activity\MultiCameraActivity.cpp" />
     <ClCompile Include="src\object_detection\ObjectDetector.cpp" />

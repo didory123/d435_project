@@ -19,6 +19,7 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/common/transforms.h>
+#include <pcl/common/common.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/conversions.h>
@@ -27,6 +28,7 @@
 #include <tchar.h>
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <chrono>
 #include <mutex>
@@ -44,6 +46,7 @@
 #include "ObjectDetector.h"
 #include "Activity.h"
 #include "MultiCameraActivity.h"
+#include "RoomActivity.h"
 
 typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;
@@ -287,6 +290,8 @@ namespace helper {
 		const int w = vf.get_width();
 		const int h = vf.get_height();
 
+		auto format = f.get_profile().format();
+
 		if (f.get_profile().format() == RS2_FORMAT_BGR8)
 		{
 			return Mat(Size(w, h), CV_8UC3, (void*)f.get_data(), Mat::AUTO_STEP);
@@ -355,7 +360,8 @@ namespace helper {
 		float cx = principal_point.first;
 		float cy = principal_point.second;
 
-		float factor = 1;
+		// The 1000 is the scaling factor; typically measured in meters, but since our depth units are in mm we divide by 1000
+		float factor = 1000;
 
 		cv::Mat depth_image;
 		depthMat.convertTo(depth_image, CV_32F); // convert the image data to float type 
@@ -385,9 +391,10 @@ namespace helper {
 						p.x = (x - cx) * Z / fx;
 						p.y = (y - cy) * Z / fy;
 
-						p.z = p.z / 1000;
-						p.x = p.x / 1000;
-						p.y = p.y / 1000;
+						
+						//p.z = p.z / 1000;
+						//p.x = p.x / 1000;
+						//p.y = p.y / 1000;
 
 						pointcloud->points.push_back(p);
 					}
@@ -410,6 +417,7 @@ namespace helper {
 
 		pcl_color_ptr pointcloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
+
 		float fx = focal_length.first;
 		float fy = focal_length.second;
 		float cx = principal_point.first;
@@ -425,9 +433,9 @@ namespace helper {
 			exit(EXIT_FAILURE);
 		}
 
-		pointcloud->width = depth_image.cols; //Dimensions must be initialized to use 2-D indexing 
-		pointcloud->height = depth_image.rows;
-		pointcloud->resize(pointcloud->width*pointcloud->height);
+		//pointcloud->width = depth_image.cols; //Dimensions must be initialized to use 2-D indexing 
+		//pointcloud->height = depth_image.rows;
+		//pointcloud->resize(pointcloud->width*pointcloud->height);
 
 		// y and x are incremented by 1 (i.e. go through every point)
 		// for better performance (at the sake of cloud detail) you could increment by a bigger number like 2 or 3
@@ -472,5 +480,54 @@ namespace helper {
 
 		return pointcloud;
 
+	}
+
+	// Write text that fits within a bounding box
+	// Copied from answer at: https://stackoverflow.com/questions/32755439/how-to-put-text-into-a-bounding-box-in-opencv
+	inline void putText(cv::Mat& img, const std::string& text, const cv::Rect& roi, const cv::Scalar& color, int fontFace, double fontScale, int thickness = 1, int lineType = 8)
+	{
+		CV_Assert(!img.empty() && (img.type() == CV_8UC3 || img.type() == CV_8UC1));
+		CV_Assert(roi.area() > 0);
+		CV_Assert(!text.empty());
+
+		int baseline = 0;
+
+		// Calculates the width and height of a text string
+		cv::Size textSize = cv::getTextSize(text, fontFace, fontScale, thickness, &baseline);
+
+		// Y-coordinate of the baseline relative to the bottom-most text point
+		baseline += thickness;
+
+		// Render the text over here (fits to the text size)
+		cv::Mat textImg(textSize.height + baseline, textSize.width, img.type());
+
+		if (color == cv::Scalar::all(0)) textImg = cv::Scalar::all(255);
+		else textImg = cv::Scalar::all(0);
+
+		// Estimating the resolution of bounding image
+		cv::Point textOrg((textImg.cols - textSize.width) / 2, (textImg.rows + textSize.height - baseline) / 2);
+
+		// TR and BL points of the bounding box
+		cv::Point tr(textOrg.x, textOrg.y + baseline);
+		cv::Point bl(textOrg.x + textSize.width, textOrg.y - textSize.height);
+
+		cv::putText(textImg, text, textOrg, fontFace, fontScale, color, thickness);
+
+		// Resizing according to the ROI
+		cv::resize(textImg, textImg, roi.size());
+
+		cv::Mat textImgMask = textImg;
+		if (textImgMask.type() == CV_8UC3)
+			cv::cvtColor(textImgMask, textImgMask, cv::COLOR_BGR2GRAY);
+
+		// Creating the mask
+		cv::equalizeHist(textImgMask, textImgMask);
+
+		if (color == cv::Scalar::all(0)) cv::threshold(textImgMask, textImgMask, 1, 255, cv::THRESH_BINARY_INV);
+		else cv::threshold(textImgMask, textImgMask, 254, 255, cv::THRESH_BINARY);
+
+		// Put into the original image
+		cv::Mat destRoi = img(roi);
+		textImg.copyTo(destRoi, textImgMask);
 	}
 }

@@ -1,12 +1,12 @@
 #pragma once
 
-class MultiCameraActivity : Activity
+class RoomActivity : Activity
 {
 public:
 
-	MultiCameraActivity();
+	RoomActivity();
 
-	MultiCameraActivity(
+	RoomActivity(
 		rs2::pipeline& pipe,
 		cv::Size frameSize,
 		const std::string& trackerType,
@@ -17,10 +17,15 @@ public:
 		std::map<std::string, Eigen::Matrix4d> calibrationMatrices,
 		const std::string& windowName,
 		ObjectDetector& detector,
-		DeviceWrapper& deviceWrapper
+		DeviceWrapper& deviceWrapper,
+		float leftWidth,
+		float rightWidth,
+		float topHeight,
+		float bottomHeight,
+		float cameraDistance
 	);
 
-	~MultiCameraActivity() {};
+	~RoomActivity() { delete prevCentroidPoint_; };
 
 
 private:
@@ -31,26 +36,42 @@ private:
 	std::map<std::string, Eigen::Matrix4d> calibrationMatrices_;
 	std::map<std::string, std::map<std::string, cv::Rect2d>> initialDetectedObjectsPerDevice_;
 	std::map<std::string, std::map<std::string, cv::Rect2d>> finalDetectedObjectsPerDevice_;
+	std::map<std::string, pcl::PointXYZ> detectedObjectsInFinalPointCloud_;
+	pcl::PointXYZRGB * prevCentroidPoint_ = nullptr;
+	//pcl::PointXYZRGB prevCentroidPoint;
 
+	// Dimensions of the room relative to the marker in meters
+	float leftWidth_ = 0, rightWidth_ = 0, topHeight_ = 0, bottomHeight_ = 0, cameraDistance_ = 0;
+	std::mutex finalOutputCloudLock_;
+	pcl::PointCloud<pcl::PointXYZRGB>::Ptr finalOutputCloud_;
 
 	void start() override;
-	void initialCapture(cv::Mat initialColorMat, cv::Mat initialDepthMat, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
-	void finalCapture(cv::Mat finalSnapshotColor, cv::Mat finalSnapshotDepth, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
+	//void initialCapture(cv::Mat initialColorMat, cv::Mat initialDepthMat, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
+	//void finalCapture(cv::Mat finalSnapshotColor, cv::Mat finalSnapshotDepth, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
 	void exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::Rect2d bbox, const std::string& deviceName, const std::string& path);
+
+	void addToFinalOutputCloud
+	(
+		const cv::Mat& depthMat,
+		const cv::Rect2d & bbox,
+		const std::string& deviceName,
+		const std::string& objectName,
+		std::tuple<int, int, int> color
+	);
 
 	void exportMergedCloud
 	(
 		const std::map<std::string, cv::Mat>& depthMats,
 		const std::map<std::string, cv::Mat>& depthColorMappers,
 		const std::map<std::string, std::map<std::string, cv::Rect2d>>& bboxes,
-		const std::string& path
+		const std::string& path,
+		std::tuple<int, int, int> rgbColor
 	);
 
-	void exportMergedCloudFromFrames
+	void recordCoordinate
 	(
-		std::map<std::string, rs2::frame> depthFrames,
-		std::map<std::string, cv::Rect2d> bboxes,
-		const std::string& path
+		const std::map<std::string, cv::Mat>& depthMats,
+		const std::map<std::string, cv::Rect2d>& bboxes
 	);
 
 	void beginActivity(
@@ -67,7 +88,7 @@ private:
 		const std::map<std::string, cv::Mat>& depthColorMappers
 	);
 
-	void MultiCameraActivity::finalPositionsCapture
+	void RoomActivity::finalPositionsCapture
 	(
 		const std::map<std::string, cv::Mat>& finalColorMats,
 		const std::map<std::string, cv::Mat>& finalDepthMats,
