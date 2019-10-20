@@ -1,7 +1,5 @@
 #include "stdafx.h"
 #include "RoomActivity.h"
-#include <cmath> 
-#include <pcl/filters/crop_box.h>
 
 
 RoomActivity::RoomActivity(
@@ -28,7 +26,8 @@ RoomActivity::RoomActivity(
 	topHeight_(topHeight),
 	bottomHeight_(bottomHeight),
 	cameraDistance_(cameraDistance),
-	finalOutputCloud_(new pcl::PointCloud<pcl::PointXYZRGB>)
+	finalOutputCloud_(new pcl::PointCloud<pcl::PointXYZRGB>),
+	roomCloud_(new pcl::PointCloud<pcl::PointXYZRGB>)
 {
 	pipe_ = &pipe; // Any pipe from any device will do, since they should all have the same stream profile
 	deviceWrapper_ = &deviceWrapper;
@@ -61,6 +60,33 @@ RoomActivity::RoomActivity(
 	// Create a detector object for this activity
 	detector_ = &detector;
 
+	// Initialize list of colors
+	std::vector<color_map> uniqueColors = 
+	{
+		{ "green", std::make_tuple(60, 180, 75) },
+		//{ "purple", std::make_tuple(145, 30, 180) },
+		{ "orange", std::make_tuple(245, 130, 49) },
+		{ "teal", std::make_tuple(0, 128, 128) },
+		{ "yellow", std::make_tuple(255, 225, 25) },
+		{ "olive", std::make_tuple(128, 128, 0) },
+		{ "lime", std::make_tuple(188, 246, 12) },
+		{ "brown", std::make_tuple(154, 99, 36) },
+		{ "cyan", std::make_tuple(70, 240, 240) },
+		{ "beige", std::make_tuple(255, 250, 200) },
+		{ "grey", std::make_tuple(128, 128, 128) },
+		//{ "magenta", std::make_tuple(240, 50, 230) },
+		//{ "pink", std::make_tuple(250, 190, 190) },
+		//{ "coral", std::make_tuple(255, 216, 177) },
+		{ "mint", std::make_tuple(170, 255, 195) },
+		//{ "maroon", std::make_tuple(128, 0, 0) },
+		//{ "navy", std::make_tuple(0, 0, 117) },
+		
+	};
+	for (const auto& i : uniqueColors)
+	{
+		colorQueue_.push(i);
+	}
+
 	// Draw walls for the room scene pointcloud
 
 	for (float y = topHeight_ * -1; y < bottomHeight_; y += 0.01)
@@ -70,7 +96,7 @@ RoomActivity::RoomActivity(
 			pcl::PointXYZRGB pLeft;
 			pLeft.y = y;
 			pLeft.z = z;
-			pLeft.x = leftWidth_ * -1;
+			pLeft.x = leftWidth_;
 			pLeft.r = 255;
 			pLeft.g = 255;
 			pLeft.b = 255;
@@ -78,15 +104,17 @@ RoomActivity::RoomActivity(
 			pcl::PointXYZRGB pRight;
 			pRight.y = y;
 			pRight.z = z;
-			pRight.x = rightWidth_;
+			pRight.x = rightWidth_ * -1;
 			pRight.r = 255;
 			pRight.g = 255;
 			pRight.b = 255;
 
 			finalOutputCloud_->points.push_back(pLeft);
 			finalOutputCloud_->points.push_back(pRight);
+			roomCloud_->points.push_back(pLeft);
+			roomCloud_->points.push_back(pRight);
 		}
-		for (float x = leftWidth_ * -1; x < rightWidth_; x += 0.01)
+		for (float x = rightWidth_ * -1; x < leftWidth_; x += 0.01)
 		{
 			pcl::PointXYZRGB pFarWall;
 			pFarWall.y = y;
@@ -96,30 +124,22 @@ RoomActivity::RoomActivity(
 			pFarWall.g = 255;
 			pFarWall.b = 255;
 			finalOutputCloud_->points.push_back(pFarWall);
+			roomCloud_->points.push_back(pFarWall);
 		}
 
 	}
 
-
-	// Begin activity
-	beginActivity(initialColorMats, initialDepthMats, depthColorMappers, personBboxes);
-
-	std::ofstream pointsInfoFile;
-	pointsInfoFile.open("./" + activityName_ + "activityInfo.txt");
-}
-
-void RoomActivity::beginActivity(
-	std::map<std::string, cv::Mat> initialColorMats,
-	std::map<std::string, cv::Mat> initialDepthMats,
-	std::map<std::string, cv::Mat> depthColorMappers,
-	std::map<std::string, cv::Rect2d> personBboxes
-)
-{
 	// ===============================================================
 	// 1. Initialize some parameters
 	// ===============================================================
 	// Create video recording
 	output_.open("./" + activityName_ + "./output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 15, cv::Size(frameSize_.width * initialColorMats.size(), frameSize_.height));
+
+	// Open the text file to which we will log the information about the detected objects
+	objectInfoFile_.open("./" + activityName_ + "./objectsInfo.txt");
+
+	// Open the text file to which we will log the timestamps of the coordinate points
+	coordinateTimestampsFile_.open("./" + activityName_ + "./coordinates/timestamps.txt");
 
 	// Initialize tracker object
 	for (auto& bbox : personBboxes)
@@ -129,10 +149,23 @@ void RoomActivity::beginActivity(
 
 	}
 
+	// Begin activity
+	beginActivity(initialColorMats, initialDepthMats, depthColorMappers, personBboxes);
+
+}
+
+void RoomActivity::beginActivity(
+	std::map<std::string, cv::Mat> initialColorMats,
+	std::map<std::string, cv::Mat> initialDepthMats,
+	std::map<std::string, cv::Mat> depthColorMappers,
+	std::map<std::string, cv::Rect2d> personBboxes
+)
+{
+
 	// ===============================================================
 	// 2. Get initial snapshot of rooms
 	// ===============================================================
-	initialPositionsCapture(initialColorMats, initialDepthMats, initialColorMats);
+	initialPositionsCapture(initialColorMats, initialDepthMats, depthColorMappers);
 
 	// ===============================================================
 	// 3. Main loop
@@ -148,19 +181,14 @@ void RoomActivity::beginActivity(
 	auto colorFrames = deviceWrapper_->getRGBFrames();
 	auto depthFrames = deviceWrapper_->getDepthFrames();
 
-	rs2::colorizer colorMapper;
 
 	std::map<std::string, cv::Mat> finalDepthMats, finalColorMats, finalColorMappers;
-
-
-
 
 	for (const auto& framePair : colorFrames)
 	{
 
 		finalColorMats[framePair.first] = helper::frameToMat(framePair.second);
-		// TODO : Need to replace this with color scheme rather than rgb
-		finalColorMappers[framePair.first] = helper::frameToMat(framePair.second);
+		
 	}
 
 	// Run the filters
@@ -176,6 +204,8 @@ void RoomActivity::beginActivity(
 
 	rs2::disparity_transform disparity_to_depth(false); // 5. Disparity back to depth
 
+	rs2::colorizer colorMapper;
+
 	for (auto& framePair : depthFrames)
 	{
 		//framePair.second = dec_filter.process(framePair.second); // 1
@@ -185,54 +215,69 @@ void RoomActivity::beginActivity(
 		framePair.second = disparity_to_depth.process(framePair.second); // 5
 
 		finalDepthMats[framePair.first] = helper::frameToMat(framePair.second);
+
+		rs2::frame coloredDepth = framePair.second.apply_filter(colorMapper);
+		finalColorMappers[framePair.first] = cv::Mat(frameSize_, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
 	}
 
-	finalPositionsCapture(finalColorMats, finalDepthMats, finalColorMats);//TODO: Uncomment: depthColorMappers);
+	// Get final positions
+	finalPositionsCapture(finalColorMats, finalDepthMats, finalColorMappers);
+
+	// Log object info to final output text file
+	// Format:
+	// objectName : (centroid_x_value centroid_y_value centroid_z_value)
+	for (auto it = detectedObjectsInFinalPointCloud_.begin(); it != detectedObjectsInFinalPointCloud_.end(); it++)
+	{
+		float totalX = 0.0, totalY = 0.0, totalZ = 0.0;
+		float finalWidth = 0.0;
+		float finalHeight = 0.0;
+		for (object_info obj : it->second)
+		{
+			finalWidth += obj.width;
+			finalHeight += obj.height;
+			totalX += obj.centroidPoint.x;
+			totalY += obj.centroidPoint.y;
+			totalZ += obj.centroidPoint.z;
+		}
+
+		// Get average dimensions of the object
+		finalWidth = finalWidth / it->second.size();
+		finalHeight = finalHeight / it->second.size();
+
+		// Get average centroid point of the object
+		pcl::PointXYZ centroidPoint(totalX / it->second.size(), totalY / it->second.size(), totalZ / it->second.size());
+
+		// Print object name
+		objectInfoFile_ << it->first << " : ";
+
+		// Print centroid point info
+		objectInfoFile_ << "(" << centroidPoint.x << " " << centroidPoint.y << " " << centroidPoint.z << ") ";
+
+		// Print approximate object size info
+		objectInfoFile_ << "(" << finalWidth << " " << finalHeight << " " << std::min(finalWidth, finalHeight) << ")\n";
+	}
 
 	pcl::PLYWriter plyWriter;
 
 	pcl::PCLPointCloud2 outputCloud;
 	pcl::toPCLPointCloud2(*finalOutputCloud_, outputCloud);
 
+	pcl::PCLPointCloud2 roomCloud;
+	pcl::toPCLPointCloud2(*roomCloud_, roomCloud);
+
 	plyWriter.writeASCII("./" + activityName_ + "./activity.ply", outputCloud);
+	plyWriter.writeASCII("./" + activityName_ + "./room.ply", roomCloud);
+
+	// Close output text files
+	objectInfoFile_.close();
+	coordinateTimestampsFile_.close();
+
 	// Wait for the worker threads to finish before terminating activity
 	for (auto &i : workerThreads_)
 	{
 		i->join();
 	}
 }
-/*
-void RoomActivity::processFrame(cv::Mat rgbMat, cv::Mat depthMat, cv::Mat depthColor, std::string& deviceName, int& frameCount, cv::Mat& output, bool& isPersonInFrame)
-{
-
-
-	if (frameCount == 60)
-	{
-		// Every 60 frames, if the person is found in the room store the person's movement location as pointcloud
-
-		// Get current time at which this pointcloud was captured
-		boost::posix_time::ptime timeLocal =
-			boost::posix_time::second_clock::local_time();
-
-		// Turns out the cv::Mat copy constructor doesn't do a deep copy. You need to specify clone() to do a deep copy otherwise
-		// the thread will throw an error once this function's matrices go out of scope
-
-		// Spawn a worker thread that exports the ply data
-		// This thread's join will be handled at the very end of the activity's life cycle
-		// Just spawn it here and don't worry about it
-		workerThreads_.push_back(
-			new std::thread(
-				&RoomActivity::exportCloud,
-				this,
-				depthMat.clone(),
-				depthColor.clone(),
-				bbox,
-				deviceName,
-				std::string("./" + activityName_ + "/coordinates/camera_" + deviceName + "_timestamp_" + std::to_string(timeLocal.time_of_day().total_milliseconds()) + ".ply")
-			)
-		);
-	}
-}*/
 
 void RoomActivity::start()
 {
@@ -481,10 +526,14 @@ void RoomActivity::initialPositionsCapture
 
 		for (auto &objects : initialDetectedObjectsPerDevice_[deviceName])
 		{
-			std::string objectName = objects.first + " initial position";
+			std::string objectName = objects.first;
+			std::string labelName = "initial " + objectName + " position";
 			cv::Rect2d objectBbox = objects.second;
 
 			cv::Mat initialDepthMat = initialDepthMats.at(deviceName);
+
+			// Get base color for this object
+			auto baseColor = getColorForObject(objectName);
 
 			// ===============================================================
 			// 1. Add depth information to each object
@@ -496,8 +545,8 @@ void RoomActivity::initialPositionsCapture
 				std::abs(objectBbox.x) + objectBbox.width <= initialDepthMat.cols ? objectBbox.width : initialDepthMat.cols - std::abs(objectBbox.x),
 				std::abs(objectBbox.y) + objectBbox.height <= initialDepthMat.rows ? objectBbox.height : initialDepthMat.rows - std::abs(objectBbox.y));
 
-			// Draw green colored pointcloud
-			addToFinalOutputCloud(initialDepthMat, bboxToFitInMat, deviceName, objectName, std::make_tuple(0, 255, 0));
+			// Draw shape with random unique color, but with white streaks
+			addToFinalOutputCloud(initialDepthMat, bboxToFitInMat, deviceName, labelName, COLOR_WHITE_STREAK.rgbValue, baseColor);
 
 			// Calculate real distance of the object by taking the mean value of the depth points in the ROI around the target object
 			cv::Scalar m = cv::mean(initialDepthMat(bboxToFitInMat));
@@ -514,8 +563,12 @@ void RoomActivity::initialPositionsCapture
 
 		}
 
-		// Store the initial snapshot as an image file
-		cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "initialPositions.png", initialPositions);
+		// Store the initial RGB snapshot as an image file
+		cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "initialPositionsRGB.png", initialPositions);
+
+		// Store the initial depth snapshot as an image file
+		//cv::Mat depthImage = depthColorMappers.at(deviceName).clone();
+		//cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "initialPositionsDepth.png", depthImage);
 	}
 
 
@@ -547,10 +600,14 @@ void RoomActivity::finalPositionsCapture
 
 		for (auto &objects : finalDetectedObjectsPerDevice_[deviceName])
 		{
-			std::string objectName = objects.first + " final position";
+			std::string objectName = objects.first;
+			std::string labelName = objectName + " position";
 			cv::Rect2d objectBbox = objects.second;
 
 			cv::Mat finalDepthMat = finalDepthMats.at(deviceName);
+
+			// Get base color for this object
+			auto baseColor = getColorForObject(objectName);
 
 			// ===============================================================
 			// 1. Draw specific colored bounding boxes for each detected object
@@ -567,16 +624,17 @@ void RoomActivity::finalPositionsCapture
 			// Draw a red colored rectangle/draw red colored pointcloud
 			if (initialDetectedObjectsPerDevice_[deviceName].count(objectName) == 0)
 			{
-				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(255, 0, 0), 2);
-				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, objectName, std::make_tuple(255, 0, 0));
+				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(0, 0, 255), 2);
+				// For new objects, make the segmented pointcloud be completely red
+				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, "new " + labelName, COLOR_RED.rgbValue, COLOR_RED.rgbValue);
 			}
 			// If the object does exist in the initial snapshot, compare the new bounding box with the previous one
 			// If different, means the object has changed
-			// Draw a pink colored rectangle/draw blue colored pointcloud
+			// Draw a blue colored rectangle/draw blue streaked pointcloud
 			else if (!ObjectDetector::bboxesEqual(objectBbox, initialDetectedObjectsPerDevice_[deviceName][objectName]))
 			{
-				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(221, 0, 255), 2);
-				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, objectName, std::make_tuple(0, 0, 255));
+				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(255, 0, 0), 2);
+				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, "final " + labelName, COLOR_PURPLE_STREAK.rgbValue, baseColor);
 			}
 
 			// ===============================================================
@@ -601,7 +659,11 @@ void RoomActivity::finalPositionsCapture
 		}
 
 		// Store the initial snapshot as an image file
-		cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "finalPositions.png", finalPositions);
+		cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "finalPositionsRGB.png", finalPositions);
+
+		// Store the initial depth snapshot as an image file
+		//cv::Mat depthImage = depthColorMappers.at(deviceName).clone();
+		//cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "finalPositionsDepth.png", depthImage);
 	}
 
 
@@ -620,7 +682,8 @@ void RoomActivity::addToFinalOutputCloud
 	const cv::Rect2d & bbox,
 	const std::string& deviceName,
 	const std::string& objectName,
-	std::tuple<int, int, int> color
+	std::tuple<int, int, int> color,
+	std::tuple<int, int, int> baseColor
 )
 {
 	int frameWidth = depthMat.cols;
@@ -637,63 +700,59 @@ void RoomActivity::addToFinalOutputCloud
 
 	*pointCloud = *helper::depthMatToColorPCL(depthMat.clone(), depthMat.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
-	// Apply transformation to the pointcloud based on device's position in the real world
-	pointCloud = helper::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
-
-
-
-
+	// IMPORTANT: We must get the minimum and maximum points before we apply the calibration matrix operations
+	// Otherwise, the min/max points will be scaled to the ROOM dimensions, but what we want is the actual min/max points of the object dimensions
+	// as seen by the camera at a straight angle.
 	pcl::PointXYZRGB minPt, maxPt;
 	pcl::getMinMax3D(*pointCloud, minPt, maxPt);
 
-	double min = minPt.z;
-	double max = maxPt.z;
+	// Apply transformation to the pointcloud based on device's position in the real world
+	pointCloud = helper::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
 
-	// Calculate centroid point
-	float avgx = 0.0, avgy = 0.0, avgz = 0.0, sumx = 0.0, sumy = 0.0, sumz = 0.0;
-	int pointsSize = 0;
+	pcl::PointXYZRGB centroidPoint = getCentroidPoint(pointCloud);
 
-	// Find sum of all valid points
-	// pointsSize is the number of all valid points
-	// sum / pointsSize give us the average (centroid)
-	for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = pointCloud->begin(); cloud_it != pointCloud->end(); ++cloud_it)
+	// Store every same object recorded by each camera; the average of these points will be used as the final centroid point
+	object_info obj =
 	{
-		avgx += cloud_it->x;
-		avgy += cloud_it->y;
-		avgz += cloud_it->z;
-		pointsSize++;
-	}
+		pcl::PointXYZ(centroidPoint.x, centroidPoint.y, centroidPoint.z),
+		abs(maxPt.x - minPt.x),
+		abs(maxPt.y - minPt.y)
+	};
+	detectedObjectsInFinalPointCloud_[objectName].push_back(obj);
 
-	// Check pointsSize > 0 to avoid division by zero
-	if (pointsSize > 0)
-	{
-		avgx = avgx / pointsSize;
-		avgy = avgy / pointsSize;
-		avgz = avgz / pointsSize;
-	}
-
-	// The centroid point will be the average of all the centroid points calculated from all cameras
-	pcl::PointXYZRGB centroidPoint(avgx, avgy, avgz);
-
+	/*
+	double minz = minPt.z;
+	double maxz = maxPt.z;
 
 	double lut_scale = 1.0; // In case the cloud is flat on the chosen direction (x,y or z) i.e. max == min
 
 	// Make sure to avoid divide by zero
-	if (min != max)
+	if (minz != maxz)
 	{
 		// Compute LUT scaling to fit the full histogram spectrum
-		lut_scale = 255.0 / (max - min);  // max is 255, min is 0
-	}
+		lut_scale = 255.0 / (maxz - minz);  // max is 255, min is 0
+	}*/
 
+	int count = 0;
 	for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = pointCloud->begin(); cloud_it != pointCloud->end(); ++cloud_it)
 	{
-		// Points that are closer will give higher value
-		// i.e. for closest points, value will give values closer to 255 * 3
-		//auto value = std::lround((cloud_it->z - min) * lut_scale);
 
-		cloud_it->r = std::get<0>(color);
-		cloud_it->g = std::get<1>(color);
-		cloud_it->b = std::get<2>(color);
+		// alternate between the color denoting its position, and the object base color, every 3rd point
+		if (count == 3)
+		{
+			cloud_it->r = std::get<0>(color);
+			cloud_it->g = std::get<1>(color);
+			cloud_it->b = std::get<2>(color);
+			count = 0;
+		}
+		else
+		{
+			cloud_it->r = std::get<0>(baseColor);
+			cloud_it->g = std::get<1>(baseColor);
+			cloud_it->b = std::get<2>(baseColor);
+			count++;
+		}
+
 
 		/*if (color == "red")
 		{
@@ -768,7 +827,8 @@ void RoomActivity::recordCoordinate
 	pcl_color_ptr centroidPointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
 	float sum_x = 0, sum_y = 0, sum_z = 0;
-	int bbox_count = 0; // keep a separate counter for all valid person bounding boxes in case some frames don't have a bbox
+
+	std::vector<pcl::PointXYZRGB> centroidPoints; // centroid points of all person bboxes from all cameras
 
 	for (auto& framePair : depthMats)
 	{
@@ -779,10 +839,6 @@ void RoomActivity::recordCoordinate
 		if (bboxes.count(deviceName) == 0)
 		{
 			continue;
-		}
-		else
-		{
-			bbox_count++;
 		}
 
 		// Get the detected person's bbox
@@ -804,44 +860,89 @@ void RoomActivity::recordCoordinate
 		// Apply transformation to the pointcloud based on device's position in the real world
 		currPointCloud = helper::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
 
-		// Calculate centroid point
-		float avgx = 0.0, avgy = 0.0, avgz = 0.0;
-		int pointsSize = 0;
-
-		// Find sum of all valid points
-		// pointsSize is the number of all valid points
-		// sum / pointsSize give us the average (centroid)
-		for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = currPointCloud->begin(); cloud_it != currPointCloud->end(); ++cloud_it)
-		{
-			avgx += cloud_it->x;
-			avgy += cloud_it->y;
-			avgz += cloud_it->z;
-			pointsSize++;
-		}
-
-		// Check pointsSize > 0 to avoid division by zero
-		if (pointsSize > 0)
-		{
-
-			sum_x = avgx / pointsSize;
-			sum_y = avgy / pointsSize;
-			sum_z = avgz / pointsSize;
-
-		}
+		centroidPoints.push_back(getCentroidPoint(currPointCloud));
 	}
 
 
 	// The centroid point will be the average of all the centroid points calculated from all cameras
 	pcl::PointXYZRGB centroidPoint;
+	float sumx = 0.0, sumy = 0.0, sumz = 0.0;
+	for (const auto& point : centroidPoints)
+	{
+		sumx += point.x;
+		sumy += point.y;
+		sumz += point.z;
+	}
 
-	centroidPoint.x = sum_x / bbox_count;
-	centroidPoint.y = sum_y / bbox_count;
-	centroidPoint.z = sum_z / bbox_count;
+	centroidPoint.x = sumx / centroidPoints.size();
+	centroidPoint.y = sumy / centroidPoints.size();
+	centroidPoint.z = sumz / centroidPoints.size();
 
 	// Mark the centroid point as pink
 	centroidPoint.r = 255;
 	centroidPoint.g = 20;
 	centroidPoint.b = 147;
+
+	// Ensure that this isn't the first centroid point calculated (i.e. first recorded coordinate)
+	if (prevCentroidPoint_ != nullptr)
+	{
+		// Parametric equation
+		// Line in 3D = p1 + t*v = <x0, y0, z0> + t*<v1, v2, v3>
+		// v = p2 - p1  where v = lineVector
+		// t is the parametric variable
+
+		float v1 = centroidPoint.x - prevCentroidPoint_->x;
+		float v2 = centroidPoint.y - prevCentroidPoint_->y;
+		float v3 = centroidPoint.z - prevCentroidPoint_->z;
+
+
+		pcl::PointXYZRGB newTrajectoryPoint = *prevCentroidPoint_;
+
+		float distance =
+			(centroidPoint.x - prevCentroidPoint_->x) * (centroidPoint.x - prevCentroidPoint_->x) +
+			(centroidPoint.y - prevCentroidPoint_->y) * (centroidPoint.y - prevCentroidPoint_->y) +
+			(centroidPoint.z - prevCentroidPoint_->z) * (centroidPoint.z - prevCentroidPoint_->z);
+
+		// Check that the person has moved a meaningful enough distance to warrant recording the trajectory
+		// If the distance is less than 10cm, return
+		if (distance < 0.1)
+		{
+			return;
+		}
+		else
+		{
+			int count = 1;
+
+			// Use distance to measure if we have reached the end of the vector as we draw the trajectory
+			// As we go along the vector line from previous centroid point to current centroid point,
+			// the stop condition is if the current distance is equal to the desired vector length
+			while
+				(
+				(newTrajectoryPoint.x - prevCentroidPoint_->x) * (newTrajectoryPoint.x - prevCentroidPoint_->x) +
+					(newTrajectoryPoint.y - prevCentroidPoint_->y) * (newTrajectoryPoint.y - prevCentroidPoint_->y) +
+					(newTrajectoryPoint.z - prevCentroidPoint_->z) * (newTrajectoryPoint.z - prevCentroidPoint_->z) < distance
+					)
+			{
+				newTrajectoryPoint.x = prevCentroidPoint_->x + count * 0.001 * v1;
+				newTrajectoryPoint.y = prevCentroidPoint_->y + count * 0.001 * v2;
+				newTrajectoryPoint.z = prevCentroidPoint_->z + count * 0.001 * v3;
+
+				centroidPointCloud->points.push_back(newTrajectoryPoint);
+
+				count++;
+			}
+		}
+	}
+	else
+	{
+		// Record the new centroid point
+		prevCentroidPoint_ = new pcl::PointXYZRGB(centroidPoint);
+	}
+
+	// Record current coordinate and its timestamp
+	coordinateTimestampsFile_ << centroidPoint.x << " " << centroidPoint.y << " " << centroidPoint.z << " " << std::chrono::system_clock::now().time_since_epoch().count() << "\n";
+
+	// Add centroid point to output pointcloud
 	centroidPointCloud->points.push_back(centroidPoint);
 
 	// Scatter some points next to the centroid point for better visibility
@@ -868,54 +969,11 @@ void RoomActivity::recordCoordinate
 		centroidPointCloud->points.push_back(pointAdj2);
 	}
 
-	// Ensure that this isn't the first centroid point calculated (i.e. first recorded coordinate)
-	if (prevCentroidPoint_ != nullptr)
-	{
-		// Parametric equation
-		// Line in 3D = p1 + t*v = <x0, y0, z0> + t*<v1, v2, v3>
-		// v = p2 - p1  where v = lineVector
-		// t is the parametric variable
-
-		float v1 = centroidPoint.x - prevCentroidPoint_->x;
-		float v2 = centroidPoint.y - prevCentroidPoint_->y;
-		float v3 = centroidPoint.z - prevCentroidPoint_->z;
-
-
-		pcl::PointXYZRGB newCentroidPoint = *prevCentroidPoint_;
-
-		float distance =
-			(centroidPoint.x - prevCentroidPoint_->x) * (centroidPoint.x - prevCentroidPoint_->x) +
-			(centroidPoint.y - prevCentroidPoint_->y) * (centroidPoint.y - prevCentroidPoint_->y) +
-			(centroidPoint.z - prevCentroidPoint_->z) * (centroidPoint.z - prevCentroidPoint_->z);
-
-		int count = 1;
-		while
-			(
-			(newCentroidPoint.x - prevCentroidPoint_->x) * (newCentroidPoint.x - prevCentroidPoint_->x) +
-				(newCentroidPoint.y - prevCentroidPoint_->y) * (newCentroidPoint.y - prevCentroidPoint_->y) +
-				(newCentroidPoint.z - prevCentroidPoint_->z) * (newCentroidPoint.z - prevCentroidPoint_->z) < distance
-				)
-		{
-			newCentroidPoint.x = prevCentroidPoint_->x + count * 0.001 * v1;
-			newCentroidPoint.y = prevCentroidPoint_->y + count * 0.001 * v2;
-			newCentroidPoint.z = prevCentroidPoint_->z + count * 0.001 * v3;
-
-			centroidPointCloud->points.push_back(newCentroidPoint);
-
-			count++;
-		}
-
-	}
-	else
-	{
-		// Record the new centroid point
-		prevCentroidPoint_ = new pcl::PointXYZRGB(centroidPoint);
-	}
-
 	// Record the new centroid point
 	*prevCentroidPoint_ = centroidPoint;
 
 	*finalOutputCloud_ += *centroidPointCloud;
+	*roomCloud_ += *centroidPointCloud;
 
 }
 
@@ -1017,4 +1075,56 @@ void RoomActivity::exportMergedCloud
 	plyWriter.writeASCII(path, outputCloud);
 
 	//Activity::exportPointCloud(depthData, depthColorMapper, bbox, path);
+}
+
+std::tuple<int, int, int> RoomActivity::getColorForObject(const std::string& objectName)
+{
+	if (objectToColorMap_.count(objectName) > 0)
+	{
+		return objectToColorMap_[objectName].rgbValue;
+	}
+
+	// Get next available color
+	color_map nextColor = colorQueue_.front();
+
+	// Assign this color for this object
+	objectToColorMap_[objectName].colorName = nextColor.colorName;
+	objectToColorMap_[objectName].rgbValue = nextColor.rgbValue;
+
+	// Put this color at the back fo the queue, so we may reuse it later if we run out of colors
+	colorQueue_.pop();
+	colorQueue_.push(nextColor);
+	return nextColor.rgbValue;
+}
+
+
+pcl::PointXYZRGB RoomActivity::getCentroidPoint(pcl_color_ptr pointCloud)
+{
+	// Calculate centroid point
+	float sumx = 0.0, sumy = 0.0, sumz = 0.0;
+	int pointsSize = 0;
+
+	// Find sum of all valid points
+	// pointsSize is the number of all valid points
+	// sum / pointsSize give us the average (centroid)
+	for (pcl::PointCloud<pcl::PointXYZRGB>::iterator cloud_it = pointCloud->begin(); cloud_it != pointCloud->end(); ++cloud_it)
+	{
+		sumx += cloud_it->x;
+		sumy += cloud_it->y;
+		sumz += cloud_it->z;
+		pointsSize++;
+	}
+
+	pcl::PointXYZRGB centroidPoint;
+
+	// Check pointsSize > 0 to avoid division by zero
+	if (pointsSize > 0)
+	{
+
+		centroidPoint.x = sumx / pointsSize;
+		centroidPoint.y = sumy / pointsSize;
+		centroidPoint.z = sumz / pointsSize;
+
+	}
+	return centroidPoint;
 }

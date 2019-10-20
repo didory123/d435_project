@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "MultiCameraActivity.h"
-#include <cmath> 
-#include <pcl/filters/crop_box.h>
+
 
 
 MultiCameraActivity::MultiCameraActivity(

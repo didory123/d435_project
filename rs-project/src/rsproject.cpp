@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "TestDriver.hpp"
 
+
 // main program entry
 int main()
 {
@@ -128,24 +129,127 @@ int main()
 				return TestDriver::autoObjectTracking(frameSize);
 			}
 		}
-		else if (userInput == "11")
+		else if (userInput == "10")
 		{
-			std::string directoryName = "";
-			std::cout << "Input the name of the activity directory from which to read" << std::endl;
-			std::getline(std::cin, directoryName);
-	
-			std::string cloudFileName = "./" + directoryName + "/activity.ply", *cloud;
-			if (boost::filesystem::exists(cloudFileName))
+			std::string leftWidthString = "", rightWidthString = "", topHeightString = "", bottomHeightString = "", cameraDistanceString = "";
+			float leftWidthVal = 0, rightWidthVal = 0, topHeightVal = 0, bottomHeightVal = 0, cameraDistanceVal = 0;
+
+			std::cout << "Input the distance from the left wall of the room to the marker 0-axis in meters" << std::endl;
+			// Input room width
+			while (std::getline(std::cin, leftWidthString))
 			{
-				return TestDriver::showActivityCloud(directoryName);
+				try
+				{
+					leftWidthVal = std::stof(leftWidthString);
+					break;
+				}
+				catch (const std::exception & e)
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+				}
 			}
-			else
+
+			std::cout << "Input the distance from the right wall of the room to the marker 0-axis in meters" << std::endl;
+			// Input room length
+			while (std::getline(std::cin, rightWidthString))
 			{
-				std::cout << "Could not find activity.ply file at specified location" << std::endl;
-				return 0;
+				try
+				{
+					rightWidthVal = std::stof(rightWidthString);
+					break;
+				}
+				catch (const std::exception & e)
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+				}
+			}
+
+			std::cout << "Input the distance from the ceiling of the room to the marker 0-axis in meters" << std::endl;
+			// Input room length
+			while (std::getline(std::cin, topHeightString))
+			{
+				try
+				{
+					topHeightVal = std::stof(topHeightString);
+					break;
+				}
+				catch (const std::exception & e)
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+				}
+			}
+
+			std::cout << "Input the distance from the floor of the room to the marker 0-axis in meters" << std::endl;
+			// Input room length
+			while (std::getline(std::cin, bottomHeightString))
+			{
+				try
+				{
+					bottomHeightVal = std::stof(bottomHeightString);
+					break;
+				}
+				catch (const std::exception & e)
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+				}
+			}
+
+			std::cout << std::endl;
+			std::cout << "Place the 2 cameras at the corners of the room, facing the marker on the wall." << std::endl;
+			std::cout << "-------MARKER--------" << std::endl;
+			std::cout << "| .   .   |.   .  . |" << std::endl;
+			std::cout << "| .  .   .|  .  . . |" << std::endl;
+			std::cout << "| . .  . Dist  . .. |" << std::endl;
+			std::cout << "| .. .    |      .. |" << std::endl;
+			std::cout << "| c1             c2 |" << std::endl;
+			std::cout << "---------------------" << std::endl;
+			std::cout << std::endl;
+
+			std::cout << "Input the straight line distance between the cameras to the opposite wall in meters (ensure that it is roughly the same for both cameras)" << std::endl;
+			// Input camera distance
+			while (std::getline(std::cin, cameraDistanceString))
+			{
+				try
+				{
+					cameraDistanceVal = std::stof(cameraDistanceString);
+					break;
+				}
+				catch (const std::exception & e)
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+				}
+			}
+
+			cv::Size frameSize;
+			std::cout << "Input a number from 1-4 to select the size of the video frames (1 is smallest, 4 is largest)" << std::endl;
+			while (std::getline(std::cin, userInput))
+			{
+				if (userInput == "1")
+				{
+					frameSize = SMALL_DIMS;
+				}
+				else if (userInput == "2")
+				{
+					frameSize = MEDIUM_DIMS;
+				}
+				else if (userInput == "3")
+				{
+					frameSize = LARGE_DIMS;
+				}
+				else if (userInput == "4")
+				{
+					frameSize = LARGEST_DIMS;
+				}
+				else
+				{
+					std::cout << "Not a valid input, please try again." << std::endl;
+					continue;
+				}
+				return TestDriver::roomActivityVisualize(leftWidthVal, rightWidthVal, topHeightVal, bottomHeightVal, cameraDistanceVal, frameSize);
 			}
 
 		}
+
 		else
 		{
 			std::cout << "Not a valid input, please try again." << std::endl;

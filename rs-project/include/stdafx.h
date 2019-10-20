@@ -5,7 +5,6 @@
 
 #pragma once
 
-
 #include <opencv2/opencv.hpp> 
 #include <opencv2/aruco.hpp>
 #include <opencv2/aruco/charuco.hpp>
@@ -17,6 +16,8 @@
 
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/crop_box.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/common.h>
@@ -45,8 +46,7 @@
 #include "DataTypes.h"
 #include "ObjectDetector.h"
 #include "Activity.h"
-#include "MultiCameraActivity.h"
-#include "RoomActivity.h"
+
 
 typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;

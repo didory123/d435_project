@@ -18,4 +18,15 @@ struct stream_profile_detail
 	E_FRAME_RATE frameRate;
 };
 
-typedef std::tuple<int, int, int> rgbValue;
+struct object_info
+{
+	pcl::PointXYZ centroidPoint;
+	float width = 0;
+	float height = 0;
+};
+
+struct color_map
+{
+	std::string colorName;
+	std::tuple<int, int, int> rgbValue;
+};

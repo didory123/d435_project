@@ -1,13 +1,14 @@
 #pragma once
 #include "stdafx.h"
+#include "MultiCameraActivity.h"
+#include "RoomActivity.h"
+#include "Activity.h"
 
 // Fully static class that tests various functionalities with OpenCV/Intel Realsense 
 using namespace helper;
 class TestDriver
 {
 public:
-
-	
 
 	// The program logic for the aruco module testing happens here
 	static int arucoTest()
@@ -1841,7 +1842,7 @@ public:
 					//cv::imshow(window_name, images[0]);
 					cv::Mat combinedImage;
 					cv::hconcat(images, combinedImage);
-					putText(combinedImage, "Press 'ESC' when your marker is visible in all camera streams.",
+					putText(combinedImage, "Press any button when your marker is visible in all camera streams.",
 						Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0), 2);
 					cv::imshow(mainWindow, combinedImage);
 				}
@@ -1915,11 +1916,12 @@ public:
 
 				initialColorMats[framePair.first] = helper::frameToMat(framePair.second).clone();
 				initialDepthMats[framePair.first] = helper::frameToMat(depthFrames[framePair.first]).clone();
-				rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
 
-				//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+				rs2::frame coloredDepth = depthFrames[framePair.first].apply_filter(color_map);
+
+				depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
 				// TODO: Comment below line and uncomment above line
-				depthColorMappers[framePair.first] = helper::frameToMat(framePair.second).clone();
+				//depthColorMappers[framePair.first] = helper::frameToMat(framePair.second).clone();
 
 			}
 
@@ -2001,9 +2003,9 @@ public:
 							initialColorMats[framePair.first] = helper::frameToMat(framePair.second).clone();
 							initialDepthMats[framePair.first] = helper::frameToMat(depthFrames[framePair.first]).clone();
 							rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
-							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
-							// TODO: Comment below line and uncomment above line
-							depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)framePair.second.get_data(), cv::Mat::AUTO_STEP);
+
+							depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
+							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)framePair.second.get_data(), cv::Mat::AUTO_STEP);
 						}
 
 					}
@@ -2123,16 +2125,49 @@ public:
 		return 0;
 	*/
 
-	static int showActivityCloud(const std::string& fileName)
+	static int showActivityCloud(const std::string& directoryName)
 	{
 		try
 		{
 			pcl_color_ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 			pcl::PLYReader Reader;
-			Reader.read(fileName, *cloud);
+			Reader.read("./" + directoryName + "/activity.ply", *cloud);
 
+			// Initialize visualizer
 			pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+			int viewPortId(0);
+			viewer->createViewPort(0.0, 0.0, 1.0, 1.0, viewPortId);
+			viewer->addCoordinateSystem();
 			viewer->addPointCloud(cloud);
+
+			std::ifstream infoFile;
+			infoFile.open("./" + directoryName + "./objectsInfo.txt");
+			std::string line;
+			std::vector<std::string> objects;
+			while (std::getline(infoFile, line))
+			{
+				// Get the delimiter separating the object name and point values
+				auto colonDelimiter = line.find_first_of(':');
+
+				// Get object name
+				std::string currObjectName = line.substr(0, colonDelimiter - 1);
+				objects.push_back(currObjectName);
+
+				// Get points
+				std::vector<std::string> pointValues;
+				std::string pointsString = line.substr(colonDelimiter + 2, line.size() - colonDelimiter + 2);
+
+				boost::split(pointValues, pointsString, boost::is_any_of(" "));
+
+				pcl::PointXYZ textPoint;
+				textPoint.x = 0;// std::stof(pointValues[0]);
+				textPoint.y = 0;// std::stof(pointValues[1]);
+				textPoint.z = 0;// std::stof(pointValues[2]);
+
+				// Add text
+				viewer->addText3D(currObjectName, textPoint, 0.2, 0, 0, 0, currObjectName, viewPortId);
+			}
+
 			while (!viewer->wasStopped())
 			{
 				viewer->spinOnce();
@@ -2140,8 +2175,9 @@ public:
 		}
 		catch (const std::exception & e)
 		{
-			std::cout << "Could not find activity.ply file at specified location" << std::endl;
+			std::cout << e.what() << std::endl;
 		}
+		return 0;
 	}
 
 private:
