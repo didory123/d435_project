@@ -288,7 +288,7 @@ void RoomActivity::start()
 	// keeps track of how many frames have passed where a person wasn't found
 	int personMissingCounter = 0;
 
-	// Initialize this to 40 so that the object detection occurs at the very beginning
+	// Initialize this to 90 so that the object detection occurs at the very beginning
 	int frameCount = 90;
 
 	rs2::colorizer colorMapper;
@@ -329,7 +329,7 @@ void RoomActivity::start()
 			depthColorMats[deviceName] = image.clone();
 
 
-			// if 60 frames has passed, run detection
+			// if 90 frames has passed, run detection
 			if (frameCount == 90)
 			{
 				lock_.lock();
@@ -347,13 +347,19 @@ void RoomActivity::start()
 
 					//bbox = newbbox;
 				}
+				else
+				{
+					trackers_[deviceName]->clear(); // remove previous box that we were tracking
+				}
 			}
 			// otherwise, simply track the person
-			else
+			else if (!trackers_[deviceName]->empty())
 			{
 				// Bitwise OR here, because we want to continue activity if person is found in at least one camera
 				isPersonInFrame = isPersonInFrame | trackers_[deviceName]->update(image, bbox[deviceName]);
 			}
+				
+			
 
 			if (isPersonInFrame)
 			{
@@ -368,8 +374,9 @@ void RoomActivity::start()
 		}
 
 		// Record coordinates
-		if (frameCount % 30 == 0 && isPersonInFrame)
+		if (frameCount % 15 == 0 && isPersonInFrame)
 		{
+			
 			// Run the filters
 			// IMPORTANT: The filters must be run in the exact order as written below
 			rs2::decimation_filter dec_filter;  // 1. Decimation - reduces depth frame density
@@ -400,7 +407,18 @@ void RoomActivity::start()
 
 			}
 
+			
+			/*
+			for (auto& framePair : depthFrames)
+			{
 
+				std::string deviceName = framePair.first;
+				cv::Mat depthImage = helper::frameToMat(framePair.second);
+
+				// Store the depth frames for pointcloud conversion
+				depthMats[deviceName] = depthImage.clone();
+
+			}*/
 
 			// Get current time at which this pointcloud was captured
 			boost::posix_time::ptime timeLocal =
@@ -530,6 +548,8 @@ void RoomActivity::initialPositionsCapture
 			std::string labelName = "initial " + objectName + " position";
 			cv::Rect2d objectBbox = objects.second;
 
+			allInitialObjects_.insert(objectName);
+
 			cv::Mat initialDepthMat = initialDepthMats.at(deviceName);
 
 			// Get base color for this object
@@ -622,7 +642,7 @@ void RoomActivity::finalPositionsCapture
 
 			// An object in the new map cannot be found in the original map, means this is a new object
 			// Draw a red colored rectangle/draw red colored pointcloud
-			if (initialDetectedObjectsPerDevice_[deviceName].count(objectName) == 0)
+			if (allInitialObjects_.count(objectName) == 0)
 			{
 				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(0, 0, 255), 2);
 				// For new objects, make the segmented pointcloud be completely red
@@ -631,7 +651,7 @@ void RoomActivity::finalPositionsCapture
 			// If the object does exist in the initial snapshot, compare the new bounding box with the previous one
 			// If different, means the object has changed
 			// Draw a blue colored rectangle/draw blue streaked pointcloud
-			else if (!ObjectDetector::bboxesEqual(objectBbox, initialDetectedObjectsPerDevice_[deviceName][objectName]))
+			else if (initialDetectedObjectsPerDevice_[deviceName].count(objectName) != 0 && !ObjectDetector::bboxesEqual(objectBbox, initialDetectedObjectsPerDevice_[deviceName][objectName]))
 			{
 				cv::rectangle(finalPositions, bboxToFitInMat, cv::Scalar(255, 0, 0), 2);
 				addToFinalOutputCloud(finalDepthMat, bboxToFitInMat, deviceName, "final " + labelName, COLOR_PURPLE_STREAK.rgbValue, baseColor);
@@ -818,8 +838,6 @@ void RoomActivity::recordCoordinate
 {
 	int frameWidth = depthMats.begin()->second.cols;
 	int frameHeight = depthMats.begin()->second.rows;
-
-	std::cout << frameWidth << " " << frameHeight << std::endl;
 
 	/*pointCloud->width = frameWidth; //Dimensions must be initialized to use 2-D indexing
 	pointCloud->height = frameHeight;

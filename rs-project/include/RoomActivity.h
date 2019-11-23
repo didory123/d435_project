@@ -53,7 +53,11 @@ private:
 	// Map of detected objects
 	std::map<std::string, std::map<std::string, cv::Rect2d>> initialDetectedObjectsPerDevice_;
 	std::map<std::string, std::map<std::string, cv::Rect2d>> finalDetectedObjectsPerDevice_;
+
+	std::set<std::string> allInitialObjects_;
+
 	std::map<std::string, std::vector<object_info>> detectedObjectsInFinalPointCloud_;
+	
 
 	std::map<std::string, color_map> objectToColorMap_; // maps each unique object to a different color
 	std::queue<color_map> colorQueue_; // queue of different colors, when next object is being drawn use this queue to determine what color to use

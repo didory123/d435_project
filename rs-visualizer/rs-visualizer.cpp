@@ -125,18 +125,172 @@ void displayVisualSummary(const std::string& cloudFileName, const std::string& i
 				viewer->addCube(
 					centroidPoint.x - widthRadius,
 					centroidPoint.x + widthRadius,
+					centroidPoint.y + heightRadius / 3,
+					centroidPoint.y + heightRadius,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z + depthRadius,
+					r, g, b,
+					currObjectName + "base",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x - widthRadius / 2,
+					centroidPoint.y + heightRadius / 3,
+					centroidPoint.y + heightRadius * 1.5,
+					centroidPoint.z + depthRadius / 2,
+					centroidPoint.z + depthRadius,
+					r, g, b,
+					currObjectName + "right1",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x - widthRadius / 2,
+					centroidPoint.y + heightRadius / 3,
+					centroidPoint.y + heightRadius * 1.5,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z - depthRadius / 2,
+					r, g, b,
+					currObjectName + "right2",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x + widthRadius / 2,
+					centroidPoint.x + widthRadius,
+					centroidPoint.y + heightRadius / 3,
+					centroidPoint.y + heightRadius * 1.5,
+					centroidPoint.z + depthRadius / 2,
+					centroidPoint.z + depthRadius,
+					r, g, b,
+					currObjectName + "left1",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x + widthRadius / 2,
+					centroidPoint.x + widthRadius,
+					centroidPoint.y + heightRadius / 3,
+					centroidPoint.y + heightRadius * 1.5,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z - depthRadius / 2,
+					r, g, b,
+					currObjectName + "left2",
+					viewPortId
+				);
+
+				centroidPoint.y += heightRadius / 3;
+				//centroidPoint.z += 0.05 + depthRadius;
+				//centroidPoint.y += heightRadius / 2;
+			}
+			else if (currObjectName.find("oven") != std::string::npos)
+			{
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x + widthRadius,
 					centroidPoint.y,
 					centroidPoint.y + heightRadius,
 					centroidPoint.z - depthRadius,
 					centroidPoint.z + depthRadius,
 					r, g, b,
-					currObjectName,
+					currObjectName + "base",
 					viewPortId
 				);
-
+				centroidPoint.y += heightRadius / 3;
 				//centroidPoint.z += 0.05 + depthRadius;
 				//centroidPoint.y += heightRadius / 2;
 			}
+			else if (currObjectName.find("chair") != std::string::npos)
+			{
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x + widthRadius,
+					centroidPoint.y,
+					centroidPoint.y + heightRadius / 3,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z + depthRadius,
+					r, g, b,
+					currObjectName + "base",
+					viewPortId
+				);
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x + widthRadius,
+					centroidPoint.y - heightRadius,
+					centroidPoint.y,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z - depthRadius/4,
+					r, g, b,
+					currObjectName + "backrest",
+					viewPortId
+				);
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x - widthRadius / 2,
+					centroidPoint.y,
+					centroidPoint.y + heightRadius,
+					centroidPoint.z + depthRadius / 2,
+					centroidPoint.z + depthRadius,
+					r, g, b,
+					currObjectName + "right1",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x - widthRadius,
+					centroidPoint.x - widthRadius / 2,
+					centroidPoint.y,
+					centroidPoint.y + heightRadius,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z - depthRadius / 2,
+					r, g, b,
+					currObjectName + "right2",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x + widthRadius/2,
+					centroidPoint.x + widthRadius,
+					centroidPoint.y,
+					centroidPoint.y + heightRadius,
+					centroidPoint.z + depthRadius / 2,
+					centroidPoint.z + depthRadius,
+					r, g, b,
+					currObjectName + "left1",
+					viewPortId
+				);
+
+				viewer->addCube(
+					centroidPoint.x + widthRadius /2,
+					centroidPoint.x + widthRadius,
+					centroidPoint.y,
+					centroidPoint.y + heightRadius,
+					centroidPoint.z - depthRadius,
+					centroidPoint.z - depthRadius / 2,
+					r, g, b,
+					currObjectName + "left2",
+					viewPortId
+				);
+			}
+
+			else if (currObjectName.find("tvmonitor") != std::string::npos)
+			{
+				viewer->addCube(
+					centroidPoint.x - widthRadius * 2,
+					centroidPoint.x + widthRadius * 2,
+					centroidPoint.y - heightRadius * 2,
+					centroidPoint.y + heightRadius * 2,
+					centroidPoint.z - depthRadius / 4 ,
+					centroidPoint.z + depthRadius / 4,
+					r, g, b,
+					currObjectName,
+					viewPortId
+				);
+			}
+
 			// if the object is small (either width or height smaller than 1m) use a sphere to represent
 			else if (widthRadius < 0.25 || heightRadius < 0.25)
 			{
@@ -300,57 +454,58 @@ void displaySegmented(const std::string& cloudFileName, const std::string& infoF
 
 int main()
 {
-
-	std::string directoryName = "";
-	std::cout << "Input the path to the activity directory from which to read" << std::endl;
-	std::getline(std::cin, directoryName);
-
-	std::string cloudFileName = directoryName;
-	std::string infoFileName = directoryName + "./objectsInfo.txt";
-
-	std::string option = "";
-	std::cout << "Input 1 for simple 3D visual summary with shapes, input 2 for detailed 3D visualization with segmented pointclouds" << std::endl;
-	while (std::getline(std::cin, option))
+	while (1)
 	{
+		std::string directoryName = "";
+		std::cout << "Input the path to the activity directory from which to read" << std::endl;
+		std::getline(std::cin, directoryName);
+
+		std::string cloudFileName = directoryName;
+		std::string infoFileName = directoryName + "./objectsInfo.txt";
+
+		std::string option = "";
+		std::cout << "Input 1 for simple 3D visual summary with shapes, input 2 for detailed 3D visualization with segmented pointclouds" << std::endl;
+		while (std::getline(std::cin, option))
+		{
+			if (option == "1")
+			{
+				cloudFileName += "/room.ply";
+				break;
+			}
+			else if (option == "2")
+			{
+				cloudFileName += "/activity.ply";
+				break;
+			}
+			else
+			{
+				std::cout << "Not a valid input, please try again." << std::endl;
+			}
+		}
+
+		// Check ply file exists
+		if (!boost::filesystem::exists(cloudFileName))
+		{
+			std::cout << "Could not find " << cloudFileName << " file in the specified directory" << std::endl;
+			return 0;
+		}
+		// Check objects info text file exists
+		else if (!boost::filesystem::exists(infoFileName))
+		{
+			std::cout << "Could not find objectsInfo.txt file in the specified directory" << std::endl;
+			return 0;
+		}
+
 		if (option == "1")
 		{
-			cloudFileName += "/room.ply";
-			break;
+			displayVisualSummary(cloudFileName, infoFileName);
 		}
 		else if (option == "2")
 		{
-			cloudFileName += "/activity.ply";
-			break;
+			displaySegmented(cloudFileName, infoFileName);
 		}
-		else
-		{
-			std::cout << "Not a valid input, please try again." << std::endl;
-		}
-	}
 
-	// Check ply file exists
-	if (!boost::filesystem::exists(cloudFileName))
-	{
-		std::cout << "Could not find " << cloudFileName << " file in the specified directory" << std::endl;
-		return 0;
 	}
-	// Check objects info text file exists
-	else if (!boost::filesystem::exists(infoFileName))
-	{
-		std::cout << "Could not find objectsInfo.txt file in the specified directory" << std::endl;
-		return 0;
-	}
-
-	if (option == "1")
-	{
-		displayVisualSummary(cloudFileName, infoFileName);
-	}
-	else if (option == "2")
-	{
-		displaySegmented(cloudFileName, infoFileName);
-	}
-		
-	
 	return 0;
 }
 
