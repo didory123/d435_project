@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "RoomActivity.h"
-
+#include "Utils.hpp"
 
 RoomActivity::RoomActivity(
 	rs2::pipeline& pipe,
@@ -144,7 +144,7 @@ RoomActivity::RoomActivity(
 	// Initialize tracker object
 	for (auto& bbox : personBboxes)
 	{
-		trackers_[bbox.first] = helper::createTrackerByName(trackerType_);
+		trackers_[bbox.first] = Utils::createTrackerByName(trackerType_);
 		trackers_[bbox.first]->init(initialColorMats[bbox.first], bbox.second);
 
 	}
@@ -187,7 +187,7 @@ void RoomActivity::beginActivity(
 	for (const auto& framePair : colorFrames)
 	{
 
-		finalColorMats[framePair.first] = helper::frameToMat(framePair.second);
+		finalColorMats[framePair.first] = Utils::frameToMat(framePair.second);
 		
 	}
 
@@ -214,7 +214,7 @@ void RoomActivity::beginActivity(
 		framePair.second = temp_filter.process(framePair.second); // 4
 		framePair.second = disparity_to_depth.process(framePair.second); // 5
 
-		finalDepthMats[framePair.first] = helper::frameToMat(framePair.second);
+		finalDepthMats[framePair.first] = Utils::frameToMat(framePair.second);
 
 		rs2::frame coloredDepth = framePair.second.apply_filter(colorMapper);
 		finalColorMappers[framePair.first] = cv::Mat(frameSize_, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
@@ -314,8 +314,8 @@ void RoomActivity::start()
 			std::string deviceName = framePair.first;
 
 			// Turn frames into mats
-			cv::Mat image = helper::frameToMat(framePair.second);
-			cv::Mat depthImage = helper::frameToMat(depthFrames[deviceName]);
+			cv::Mat image = Utils::frameToMat(framePair.second);
+			cv::Mat depthImage = Utils::frameToMat(depthFrames[deviceName]);
 
 			// Colorize depth frame
 			rs2::frame colorFrame = colorMapper.colorize(depthFrames[deviceName]);
@@ -340,7 +340,7 @@ void RoomActivity::start()
 				if (isPersonInFrame)
 				{
 					// Recreate and reinitialize the tracker
-					trackers_[deviceName] = helper::createTrackerByName(trackerType_);
+					trackers_[deviceName] = Utils::createTrackerByName(trackerType_);
 					trackers_[deviceName]->init(image, bbox[deviceName]);
 					//tracker_->update(image, bbox);
 					//tracker->init(image, newbbox);
@@ -400,7 +400,7 @@ void RoomActivity::start()
 				framePair.second = disparity_to_depth.process(framePair.second); // 5
 
 				std::string deviceName = framePair.first;
-				cv::Mat depthImage = helper::frameToMat(framePair.second);
+				cv::Mat depthImage = Utils::frameToMat(framePair.second);
 
 				// Store the depth frames for pointcloud conversion
 				depthMats[deviceName] = depthImage.clone();
@@ -413,7 +413,7 @@ void RoomActivity::start()
 			{
 
 				std::string deviceName = framePair.first;
-				cv::Mat depthImage = helper::frameToMat(framePair.second);
+				cv::Mat depthImage = Utils::frameToMat(framePair.second);
 
 				// Store the depth frames for pointcloud conversion
 				depthMats[deviceName] = depthImage.clone();
@@ -718,7 +718,7 @@ void RoomActivity::addToFinalOutputCloud
 
 	pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-	*pointCloud = *helper::depthMatToColorPCL(depthMat.clone(), depthMat.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+	*pointCloud = *Utils::depthMatToColorPCL(depthMat.clone(), depthMat.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 	// IMPORTANT: We must get the minimum and maximum points before we apply the calibration matrix operations
 	// Otherwise, the min/max points will be scaled to the ROOM dimensions, but what we want is the actual min/max points of the object dimensions
@@ -727,7 +727,7 @@ void RoomActivity::addToFinalOutputCloud
 	pcl::getMinMax3D(*pointCloud, minPt, maxPt);
 
 	// Apply transformation to the pointcloud based on device's position in the real world
-	pointCloud = helper::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
+	pointCloud = Utils::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
 
 	pcl::PointXYZRGB centroidPoint = getCentroidPoint(pointCloud);
 
@@ -815,10 +815,10 @@ void RoomActivity::exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::
 		std::abs(bbox.x) + bbox.width <= depthData.cols ? bbox.width : depthData.cols - std::abs(bbox.x),
 		std::abs(bbox.y) + bbox.height <= depthData.rows ? bbox.height : depthData.rows - std::abs(bbox.y));
 
-	*pointCloud += *helper::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+	*pointCloud += *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 	// Apply transformation to the pointcloud based on device's position in the real world
-	pointCloud = helper::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
+	pointCloud = Utils::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
 
 	pcl::PCLPointCloud2 outputCloud;
 	pcl::toPCLPointCloud2(*pointCloud, outputCloud);
@@ -873,10 +873,10 @@ void RoomActivity::recordCoordinate
 
 		std::cout << "Point cloud for : " << deviceName << std::endl;
 
-		*currPointCloud = *helper::depthMatToColorPCL(depthData.clone(), depthData.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+		*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthData.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 		// Apply transformation to the pointcloud based on device's position in the real world
-		currPointCloud = helper::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
+		currPointCloud = Utils::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
 
 		centroidPoints.push_back(getCentroidPoint(currPointCloud));
 	}
@@ -1038,10 +1038,10 @@ void RoomActivity::exportMergedCloud
 
 			std::cout << "Point cloud for : " << deviceName << std::endl;
 
-			*currPointCloud = *helper::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 			// Apply transformation to the pointcloud based on device's position in the real world
-			currPointCloud = helper::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
+			currPointCloud = Utils::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
 
 			// Merge pointcloud
 			*pointCloud += *currPointCloud;

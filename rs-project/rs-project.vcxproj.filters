@@ -33,9 +33,6 @@
     <ClInclude Include="include\ObjectDetector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\TestDriver.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\Activity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -47,6 +44,9 @@
     </ClInclude>
     <ClInclude Include="include\DataTypes.h">
       <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Utils.hpp">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

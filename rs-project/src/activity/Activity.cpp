@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "Activity.h"
-
+#include "Utils.hpp"
 Activity::Activity(
 	cv::Size frameSize,
 	rs2::pipeline& pipe, 
@@ -64,7 +64,7 @@ void Activity::beginActivity(const cv::Mat& initialColorMat, const cv::Mat& init
 	output_.open("./" + activityName_ + "./output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 15, cv::Size(initialColorMat.cols, initialColorMat.rows));
 
 	// Initialize tracker object
-	tracker_ = helper::createTrackerByName(trackerType_);
+	tracker_ = Utils::createTrackerByName(trackerType_);
 	tracker_->init(initialColorMat, personBbox);
 
 	// ===============================================================
@@ -98,9 +98,9 @@ void Activity::beginActivity(const cv::Mat& initialColorMat, const cv::Mat& init
 	rs2::frame depth = data.get_depth_frame(); // Get depth frames
 	rs2::frame rgb = data.get_color_frame(); // Get RGB frames
 
-	cv::Mat finalRgb = helper::frameToMat(data.get_color_frame());
-	//cv::Mat finalDepth = helper::depthFrameToScale(*pipe_, data.get_depth_frame());
-	cv::Mat finalDepth = helper::frameToMat(data.get_depth_frame());
+	cv::Mat finalRgb = Utils::frameToMat(data.get_color_frame());
+	//cv::Mat finalDepth = Utils::depthFrameToScale(*pipe_, data.get_depth_frame());
+	cv::Mat finalDepth = Utils::frameToMat(data.get_depth_frame());
 	rs2::colorizer colorMapper;
 	depth = colorMapper.colorize(depth);
 
@@ -172,7 +172,7 @@ void Activity::initialSnapshot(cv::Mat initialColorMat, cv::Mat initialDepthMat,
 		// ===============================================================
 		if (exportCloud)
 		{
-			*initialObjectsCloud += *helper::depthMatToColorPCL(initialDepthMat, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*initialObjectsCloud += *Utils::depthMatToColorPCL(initialDepthMat, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 		}
 	}
 
@@ -217,7 +217,7 @@ void Activity::start()
 		rs2::frame rgb = data.get_color_frame(); // Get RGB frames
 
 		// Create OpenCV matrix of size (w,h) from the colorized depth data
-		cv::Mat image = helper::frameToMat(rgb);
+		cv::Mat image = Utils::frameToMat(rgb);
 		
 		// if 90 frames has passed, run detection
 		if (frameCount == 90)
@@ -228,7 +228,7 @@ void Activity::start()
 			if (isPersonInFrame)
 			{
 				// Recreate and reinitialize the tracker
-				tracker_ = helper::createTrackerByName(trackerType_);
+				tracker_ = Utils::createTrackerByName(trackerType_);
 				tracker_->init(image, bbox);
 				//tracker_->update(image, bbox);
 				personMissingCounter = 0;
@@ -272,7 +272,7 @@ void Activity::start()
 
 			// Get depth frame
 			rs2::frame depthFrame = data.get_depth_frame();
-			cv::Mat depthMat = helper::depthFrameToScale(*pipe_, depthFrame);// helper::frameToMat(depthFrame);
+			cv::Mat depthMat = Utils::depthFrameToScale(*pipe_, depthFrame);// Utils::frameToMat(depthFrame);
 
 			// Get depth color mat
 			rs2::colorizer colorMapper;
@@ -351,7 +351,7 @@ void Activity::exportPointCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv:
 		bbox.x + bbox.width <= depthData.cols ? bbox.width : depthData.cols - bbox.x,
 		bbox.y + bbox.height <= depthData.rows ? bbox.height : depthData.rows - bbox.y);
 
-	*finalObjectsCloud += *helper::depthMatToColorPCL(depthData, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+	*finalObjectsCloud += *Utils::depthMatToColorPCL(depthData, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 	
 	pcl::PCLPointCloud2 outputCloud;
 	pcl::toPCLPointCloud2(*finalObjectsCloud, outputCloud);
@@ -425,7 +425,7 @@ void Activity::finalSnapshot(cv::Mat finalSnapshotColor, cv::Mat finalSnapshotDe
 		// ===============================================================
 		if (exportCloud)
 		{
-			*finalObjectsCloud += *helper::depthMatToColorPCL(finalSnapshotDepth, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*finalObjectsCloud += *Utils::depthMatToColorPCL(finalSnapshotDepth, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 		}
 	}
 	if (exportCloud)

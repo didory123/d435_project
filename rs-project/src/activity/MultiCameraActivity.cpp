@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "MultiCameraActivity.h"
-
+#include "Utils.hpp"
 
 
 MultiCameraActivity::MultiCameraActivity(
@@ -68,7 +68,7 @@ void MultiCameraActivity::beginActivity(
 	// Initialize tracker object
 	for (auto& bbox : personBboxes)
 	{
-		trackers_[bbox.first] = helper::createTrackerByName(trackerType_);
+		trackers_[bbox.first] = Utils::createTrackerByName(trackerType_);
 		trackers_[bbox.first]->init(initialColorMats[bbox.first], bbox.second);
 		
 	}
@@ -110,9 +110,9 @@ void MultiCameraActivity::beginActivity(
 	for (const auto& framePair : colorFrames)
 	{
 
-		finalColorMats[framePair.first] = helper::frameToMat(framePair.second);
+		finalColorMats[framePair.first] = Utils::frameToMat(framePair.second);
 		// TODO : Need to replace this with color scheme rather than rgb
-		finalColorMappers[framePair.first] = helper::frameToMat(framePair.second);
+		finalColorMappers[framePair.first] = Utils::frameToMat(framePair.second);
 	}
 
 	// Run the filters
@@ -136,7 +136,7 @@ void MultiCameraActivity::beginActivity(
 		framePair.second = temp_filter.process(framePair.second); // 4
 		framePair.second = disparity_to_depth.process(framePair.second); // 5
 
-		finalDepthMats[framePair.first] = helper::frameToMat(framePair.second);
+		finalDepthMats[framePair.first] = Utils::frameToMat(framePair.second);
 	}
 
 	finalPositionsCapture(finalColorMats, finalDepthMats, finalColorMats);//TODO: Uncomment: depthColorMappers);
@@ -216,8 +216,8 @@ void MultiCameraActivity::start()
 			std::string deviceName = framePair.first;
 
 			// Turn frames into mats
-			cv::Mat image = helper::frameToMat(framePair.second);
-			cv::Mat depthImage = helper::frameToMat(depthFrames[deviceName]);
+			cv::Mat image = Utils::frameToMat(framePair.second);
+			cv::Mat depthImage = Utils::frameToMat(depthFrames[deviceName]);
 
 			// Colorize depth frame
 			rs2::frame colorFrame = colorMapper.colorize(depthFrames[deviceName]);
@@ -242,7 +242,7 @@ void MultiCameraActivity::start()
 				if (isPersonInFrame)
 				{
 					// Recreate and reinitialize the tracker
-					trackers_[deviceName] = helper::createTrackerByName(trackerType_);
+					trackers_[deviceName] = Utils::createTrackerByName(trackerType_);
 					trackers_[deviceName]->init(image, bbox[deviceName]);
 					//tracker_->update(image, bbox);
 					//tracker->init(image, newbbox);
@@ -294,7 +294,7 @@ void MultiCameraActivity::start()
 				framePair.second = disparity_to_depth.process(framePair.second); // 5
 
 				std::string deviceName = framePair.first;
-				cv::Mat depthImage = helper::frameToMat(framePair.second);
+				cv::Mat depthImage = Utils::frameToMat(framePair.second);
 
 				// Store the depth frames for pointcloud conversion
 				depthMats[deviceName] = depthImage.clone();
@@ -462,7 +462,7 @@ void MultiCameraActivity::initialCapture(cv::Mat initialColorMat, cv::Mat initia
 		// ===============================================================
 		if (exportCloud)
 		{
-			*initialObjectsCloud += *helper::depthMatToColorPCL(initialDepthMat, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*initialObjectsCloud += *Utils::depthMatToColorPCL(initialDepthMat, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 		}
 	}
 
@@ -621,7 +621,7 @@ void MultiCameraActivity::finalCapture(cv::Mat finalSnapshotColor, cv::Mat final
 		// ===============================================================
 		if (exportCloud)
 		{
-			*finalObjectsCloud += *helper::depthMatToColorPCL(finalSnapshotDepth, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*finalObjectsCloud += *Utils::depthMatToColorPCL(finalSnapshotDepth, depthColorMapper, (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 		}
 	}
 	if (exportCloud)
@@ -750,10 +750,10 @@ void MultiCameraActivity::exportCloud(cv::Mat depthData, cv::Mat depthColorMappe
 		std::abs(bbox.x) + bbox.width <= depthData.cols ? bbox.width : depthData.cols - std::abs(bbox.x),
 		std::abs(bbox.y) + bbox.height <= depthData.rows ? bbox.height : depthData.rows - std::abs(bbox.y));
 
-	*pointCloud += *helper::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+	*pointCloud += *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 	// Apply transformation to the pointcloud based on device's position in the real world
-	pointCloud = helper::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
+	pointCloud = Utils::affineTransformMatrix(pointCloud, calibrationMatrices_[deviceName].inverse());
 
 	pcl::PCLPointCloud2 outputCloud;
 	pcl::toPCLPointCloud2(*pointCloud, outputCloud);
@@ -807,10 +807,10 @@ void MultiCameraActivity::exportMergedCloud
 
 			std::cout << "Point cloud for : " << deviceName << std::endl;
 
-			*currPointCloud = *helper::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 			// Apply transformation to the pointcloud based on device's position in the real world
-			currPointCloud = helper::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
+			currPointCloud = Utils::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
 
 			// Merge pointcloud
 			*pointCloud += *currPointCloud;
@@ -908,7 +908,7 @@ void MultiCameraActivity::exportMergedCloudFromFrames
 		pc.map_to(coloredDepth);
 		points = pc.calculate(coloredDepth);
 
-		pcl_color_ptr colorCloud = helper::pointsToColorPCL(points, frame.second);
+		pcl_color_ptr colorCloud = Utils::pointsToColorPCL(points, frame.second);
 
 		//cv::Mat depthData = frame.second;
 		//cv::Mat depthColorMapper = depthColorMappers[frame.first];
@@ -923,10 +923,10 @@ void MultiCameraActivity::exportMergedCloudFromFrames
 
 		//pcl_color_ptr currPointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-		//*currPointCloud = *helper::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+		//*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (pipe_->get_active_profile().get_stream(RS2_STREAM_DEPTH)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 		//// Apply transformation to the pointcloud based on device's position in the real world
-		colorCloud = helper::affineTransformMatrix(colorCloud, calibrationMatrices_[frame.first].inverse());
+		colorCloud = Utils::affineTransformMatrix(colorCloud, calibrationMatrices_[frame.first].inverse());
 
 		//// Merge pointcloud
 		*pointCloud += *colorCloud;

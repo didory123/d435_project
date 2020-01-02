@@ -163,7 +163,7 @@
     <ClInclude Include="include\stdafx.h" />
     <ClInclude Include="include\targetver.h" />
     <ClInclude Include="include\ObjectDetector.h" />
-    <ClInclude Include="include\TestDriver.hpp" />
+    <ClInclude Include="include\Utils.hpp" />
     <ClInclude Include="include\RoomActivity.h" />
   </ItemGroup>
   <ItemGroup>
