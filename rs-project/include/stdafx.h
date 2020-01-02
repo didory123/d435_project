@@ -45,10 +45,7 @@
 #include "targetver.h"
 #include "DataTypes.h"
 #include "ObjectDetector.h"
-#include "Activity.h"
 
-typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
-typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;
 
 // Sizes
 const cv::Size LARGEST_DIMS = cv::Size(1280, 720);
@@ -56,4 +53,3 @@ const cv::Size LARGE_DIMS = cv::Size(848, 480);
 const cv::Size MEDIUM_DIMS = cv::Size(640, 480);
 const cv::Size SMALL_DIMS = cv::Size(640, 360);
 const cv::Size SMALLEST_DIMS = cv::Size(424, 240);
-

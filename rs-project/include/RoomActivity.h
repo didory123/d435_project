@@ -1,6 +1,6 @@
 #pragma once
 
-class RoomActivity : Activity
+class RoomActivity
 {
 public:
 
@@ -30,8 +30,24 @@ public:
 		delete prevCentroidPoint_; 
 	};
 
-
 private:
+
+	std::string activityName_ = "";
+	std::string windowName_ = "";
+	rs2::pipeline * pipe_;
+	std::map<std::string, cv::Rect2d> initialDetectedObjects_;
+	std::map<std::string, cv::Rect2d> finalDetectedObjects_;
+	ObjectDetector * detector_;
+	cv::VideoWriter output_;
+
+	std::string trackerType_ = "";
+	std::mutex lock_;
+
+	cv::Size frameSize_;
+
+	std::vector<std::thread*> workerThreads_; // List of worker threads; they're all for exporting pointcloud tracking the person's movements
+
+	void start();
 
 	// Private members
 	const color_map COLOR_RED = { "red", std::make_tuple(230, 25, 75) };
@@ -39,7 +55,7 @@ private:
 	const color_map COLOR_BLUE = { "blue", std::make_tuple(67, 99, 216) };
 	const color_map COLOR_WHITE_STREAK = { "white", std::make_tuple(235, 235, 235) };
 	const color_map COLOR_PURPLE_STREAK = { "purple", std::make_tuple(145, 30, 180) };
-	
+
 
 	// Object tracker for each camera
 	std::map<std::string, cv::Ptr<cv::Tracker>> trackers_;
@@ -73,7 +89,6 @@ private:
 
 	pcl::PointCloud<pcl::PointXYZRGB>::Ptr roomCloud_; // output cloud that contains only the room dimensions and activity
 
-	void start() override;
 	//void initialCapture(cv::Mat initialColorMat, cv::Mat initialDepthMat, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
 	//void finalCapture(cv::Mat finalSnapshotColor, cv::Mat finalSnapshotDepth, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
 	void exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::Rect2d bbox, const std::string& deviceName, const std::string& path);
@@ -121,7 +136,7 @@ private:
 		const std::map<std::string, cv::Mat>& depthColorMappers
 	);
 
-	void RoomActivity::finalPositionsCapture
+	void finalPositionsCapture
 	(
 		const std::map<std::string, cv::Mat>& finalColorMats,
 		const std::map<std::string, cv::Mat>& finalDepthMats,

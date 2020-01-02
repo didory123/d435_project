@@ -155,21 +155,18 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\Activity.h" />
     <ClInclude Include="include\DataTypes.h" />
     <ClInclude Include="include\DeviceWrapper.h" />
     <ClInclude Include="include\Marker.h" />
-    <ClInclude Include="include\MultiCameraActivity.h" />
     <ClInclude Include="include\stdafx.h" />
     <ClInclude Include="include\targetver.h" />
     <ClInclude Include="include\ObjectDetector.h" />
-    <ClInclude Include="include\Utils.hpp" />
+    <ClInclude Include="include\TestDriver.hpp" />
     <ClInclude Include="include\RoomActivity.h" />
+    <ClInclude Include="include\Utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\activity\RoomActivity.cpp" />
-    <ClCompile Include="src\activity\Activity.cpp" />
-    <ClCompile Include="src\activity\MultiCameraActivity.cpp" />
     <ClCompile Include="src\object_detection\ObjectDetector.cpp" />
     <ClCompile Include="src\aruco\Marker.cpp" />
     <ClCompile Include="src\rsproject.cpp" />
@@ -177,6 +174,7 @@
     <ClCompile Include="src\stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\Utils.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

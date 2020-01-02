@@ -30,3 +30,6 @@ struct color_map
 	std::string colorName;
 	std::tuple<int, int, int> rgbValue;
 };
+
+typedef pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr;
+typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_color_ptr;

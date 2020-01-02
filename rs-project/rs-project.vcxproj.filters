@@ -33,19 +33,16 @@
     <ClInclude Include="include\ObjectDetector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\Activity.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\MultiCameraActivity.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\RoomActivity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\DataTypes.h">
-      <Filter>Source Files</Filter>
+    <ClInclude Include="include\TestDriver.hpp">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\Utils.hpp">
+    <ClInclude Include="include\DataTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -65,13 +62,10 @@
     <ClCompile Include="src\object_detection\ObjectDetector.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\activity\Activity.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\activity\MultiCameraActivity.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\activity\RoomActivity.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

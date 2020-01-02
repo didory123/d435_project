@@ -1,6 +1,7 @@
+#pragma once
 #include "stdafx.h"
 #include "RoomActivity.h"
-#include "Utils.hpp"
+#include "Utils.h"
 
 RoomActivity::RoomActivity(
 	rs2::pipeline& pipe,

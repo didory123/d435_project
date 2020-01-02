@@ -3,7 +3,7 @@
 // Simple console app for detecting markers from real-time frames from the Intel Realsense D435 camera
 //
 #include "stdafx.h"
-#include "Utils.hpp"
+#include "TestDriver.hpp"
 
 // Simple IO function that parses the user's desired size (resolution) for video frames
 cv::Size getFrameSizeFromUser()
@@ -160,18 +160,6 @@ bool runSpecifiedMiscModule(const std::string& testCode)
 	else if (testCode == "7")
 	{
 		TestDriver::objectTracking();
-	}
-	else if (testCode == "8")
-	{
-		// Get the desired size of the video frames from the user
-		cv::Size frameSize = getFrameSizeFromUser();
-		TestDriver::multipleCameraAutoTracking(frameSize);
-	}
-	else if (testCode == "9")
-	{
-		// Get the desired size of the video frames from the user
-		cv::Size frameSize = getFrameSizeFromUser();
-		TestDriver::autoObjectTracking(frameSize);
 	}
 	else
 	{
