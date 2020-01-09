@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include "./deviceWrapper/DeviceWrapper.h"
+#include "./device/DeviceWrapper.h"
 
 
 std::vector<rs2::device> DeviceWrapper::getAllConnectedDevices()

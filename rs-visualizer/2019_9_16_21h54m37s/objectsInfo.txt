@@ -1,0 +1,3 @@
+bottle initial position : 0.0543644 1.13269 1.83631
+bottle final position : 0.051494 1.13006 1.83631
+person final position : -0.50104 0.836298 1.83631

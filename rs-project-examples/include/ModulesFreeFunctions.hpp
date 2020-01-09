@@ -1,11 +1,12 @@
 #pragma once
 #include "stdafx.h"
+#include "aruco/ArucoMarker.h"
+#include "detector/ObjectDetector.h"
+#include "device/DeviceWrapper.h"
 #include "Utils.h"
-#include "./activity/RoomActivity.h"
-
 
 // Functions that test various functionalities with OpenCV/Intel Realsense 
-namespace TestDriver
+namespace ModulesFreeFunctions
 {
 
 	// The program logic for the aruco module testing happens here
@@ -33,7 +34,7 @@ namespace TestDriver
 
 			// Create the Marker class
 			// Must specify which pre-defined index of markers we are going to be detecting; for this example we will use 6x6 markers that range up to ID 250
-			Marker markerController(cv::aruco::DICT_6X6_250);
+			ArucoMarker markerController(cv::aruco::DICT_6X6_250);
 
 			// Begin main loop for frame detection
 			while (cv::waitKey(1) < 0)
@@ -1200,353 +1201,39 @@ namespace TestDriver
 		}
 	}
 
-	// Assumes the cameras cover the entirety of the room
-	int roomActivityVisualize(float leftWidthVal, float rightWidthVal, float topHeightVal, float bottomHeightVal, float cameraDistanceVal, cv::Size size)
-	{
-		using namespace cv;
-		try
-		{
-			// =========================================================================================
-			// Initialize basic parameters (RealSense pipe, session output folder, video stream windows)
-			// =========================================================================================
+	//// Simple IO function that parses the user's desired size (resolution) for video frames
+	//cv::Size getFrameSizeFromUser()
+	//{
+	//	cv::Size frameSize;
+	//	std::string userInput = "";
+	//	std::cout << "Input a number from 1-4 to select the size of the video frames (1 is smallest, 4 is largest)" << std::endl;
+	//	while (std::getline(std::cin, userInput))
+	//	{
+	//		if (userInput == "1")
+	//		{
+	//			frameSize = SMALL_DIMS;
+	//		}
+	//		else if (userInput == "2")
+	//		{
+	//			frameSize = MEDIUM_DIMS;
+	//		}
+	//		else if (userInput == "3")
+	//		{
+	//			frameSize = LARGE_DIMS;
+	//		}
+	//		else if (userInput == "4")
+	//		{
+	//			frameSize = LARGEST_DIMS;
+	//		}
+	//		else
+	//		{
+	//			std::cout << "Not a valid input, please try again." << std::endl;
+	//			continue;
+	//		}
+	//		break;
+	//	}
+	//	return frameSize;
+	//}
 
-			// Start up OpenCV windows
-			std::string mainWindow = "Object Tracking", charucoWindow = "Calibration", finalWindow = "Final Objects";
-
-			//cv::namedWindow(initialWindow, cv::WINDOW_AUTOSIZE);
-			cv::namedWindow(mainWindow, cv::WINDOW_AUTOSIZE);
-
-			//------------------------------------------------------------------------------
-			//------------------------- OpenCV Setup ---------------------------------------
-			//------------------------------------------------------------------------------
-
-			// Create dictionary object from specific aruco library set
-			Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(cv::aruco::DICT_6X6_250));
-
-			// create charuco board object
-			// TODO: The parameters defined here are hardcoded according to the printed out charucoboard that I am using
-			//Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.0318, 0.0189, dictionary);
-			Ptr<aruco::CharucoBoard> charucoboard = aruco::CharucoBoard::create(5, 7, 0.08, 0.048, dictionary);
-			Ptr<aruco::Board> board = charucoboard.staticCast<aruco::Board>();
-
-			DeviceWrapper connected_devices;
-
-			// Initialize the streams that you want to start
-			stream_profile_detail stream_depth =
-			{
-				size.width,
-				size.height,
-				RS2_STREAM_DEPTH,
-				rs2_format::RS2_FORMAT_Z16,
-				E_FRAME_RATE::FPS_30,
-			};
-			stream_profile_detail stream_color =
-			{
-				size.width,
-				size.height,
-				RS2_STREAM_COLOR,
-				rs2_format::RS2_FORMAT_BGR8,
-				E_FRAME_RATE::FPS_30,
-			};
-
-			std::vector<stream_profile_detail> streams = { stream_depth, stream_color };
-
-			rs2::context ctx;    // Create librealsense context for managing devices
-			ctx.set_devices_changed_callback([&](rs2::event_information& info)
-			{
-				connected_devices.removeAllDevices(info);
-				for (auto&& dev : info.get_new_devices())
-				{
-					connected_devices.enableDeviceToProfiles(dev, streams);
-				}
-			});
-
-			// Initial population of the device list
-			for (auto&& dev : ctx.query_devices()) // Query the list of connected RealSense devices
-			{
-				connected_devices.enableDeviceToProfiles(dev, streams);
-
-			}
-			cv::Mat distortionCoefficients = (cv::Mat1d(1, 5) << 0, 0, 0, 0, 0);
-			auto cameraMatrices = connected_devices.getCameraMatricesMap();
-			std::map<std::string, Vec3d> rotationVectors, translationVectors;
-
-			//------------------------------------------------------------------------------
-			//------------------- Initial Marker Detection loop ----------------------------
-			//------------------------------------------------------------------------------
-			while (1) {
-
-				connected_devices.pollFrames();
-
-				Vec3d rvec, tvec;
-				std::map<std::string, Vec3d> rvecs, tvecs;
-
-				auto colorFrames = connected_devices.getRGBFrames();
-				std::vector<cv::Mat> images;
-				for (auto &frame : colorFrames)
-				{
-					cv::Mat image = Utils::frameToMat(frame.second).clone();
-					cv::Mat imageCopy;
-
-					std::vector< int > markerIds;
-					std::vector< std::vector< Point2f > > corners;
-					// detect markers	
-					aruco::detectMarkers(image, dictionary, corners, markerIds);
-
-					// interpolate charuco corners
-					std::vector< Point2f > currentCharucoCorners;
-					std::vector<int> currentCharucoIds;
-					int interpolatedCorners = 0;
-					if (markerIds.size() > 0)
-						interpolatedCorners = aruco::interpolateCornersCharuco(corners, markerIds, image,
-							charucoboard, currentCharucoCorners, currentCharucoIds, cameraMatrices[frame.first], distortionCoefficients);
-
-					// estimate charuco board pose
-					aruco::estimatePoseCharucoBoard(currentCharucoCorners, currentCharucoIds, charucoboard,
-						cameraMatrices[frame.first], distortionCoefficients, rvec, tvec);
-
-					// draw results
-					image.copyTo(imageCopy);
-
-					// draw aruco markers
-					if (markerIds.size() > 0)
-					{
-						aruco::drawDetectedMarkers(imageCopy, corners);
-					}
-					// draw things
-					if (interpolatedCorners > 0)
-					{
-						// draw corners
-						aruco::drawDetectedCornersCharuco(imageCopy, currentCharucoCorners, currentCharucoIds);
-						// draw pose
-						aruco::drawAxis(imageCopy, cameraMatrices[frame.first], distortionCoefficients, rvec, tvec, 0.05);
-					}
-					rvecs[frame.first] = rvec;
-					tvecs[frame.first] = tvec;
-					images.push_back(imageCopy);
-
-				}
-				if (images.size() > 0)
-				{
-					//cv::imshow(window_name, images[0]);
-					cv::Mat combinedImage;
-					cv::hconcat(images, combinedImage);
-					putText(combinedImage, "Press any button when your marker is visible in all camera streams.",
-						Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0), 2);
-					cv::imshow(mainWindow, combinedImage);
-				}
-				char key = (char)waitKey(10);
-				if (key > 0)
-				{
-					if (rvecs.size() > 0 && tvecs.size() > 0)
-					{
-						rotationVectors = rvecs;
-						translationVectors = tvecs;
-					}
-					break;
-				}
-			}
-			//cv::destroyAllWindows();
-
-			// Create map of calibration matrices
-			std::map<std::string, Eigen::Matrix4d> calibrationMatrices;
-			for (auto &vec : rotationVectors)
-			{
-				calibrationMatrices[vec.first] = Utils::getTransformMatrix(vec.second, translationVectors[vec.first]);
-			}
-
-			// A counter for counting the number of frames that have elapsed
-			// The stream will be 30fps, as in there will be 30 frames per second
-			// We will perform object detection for a person every 5 seconds
-
-			rs2::align align_to_color(RS2_STREAM_COLOR);
-
-			ObjectDetector detector(0.5);
-
-			int frameCount = 0;
-			int kFps = static_cast<int>(E_FRAME_RATE::FPS_30);
-
-			// Map color to depth frames
-			rs2::colorizer color_map;
-
-			//------------------------------------------------------------------------------
-			//---------------------- Get Initial Room Snapshots ----------------------------
-			//------------------------------------------------------------------------------
-			std::map<std::string, cv::Mat> initialColorMats;
-			std::map<std::string, cv::Mat> initialDepthMats;
-			std::map<std::string, cv::Mat> depthColorMappers;
-
-			connected_devices.pollFrames();
-			auto colorFrames = connected_devices.getRGBFrames();
-			auto depthFrames = connected_devices.getDepthFrames();
-
-
-			// Run the filters
-			// IMPORTANT: The filters must be run in the exact order as written below
-			rs2::decimation_filter dec_filter;  // 1. Decimation - reduces depth frame density
-
-			// Declare disparity transform from depth to disparity and vice versa
-			const std::string disparity_filter_name = "Disparity"; // 2. Depth to disparity
-			rs2::disparity_transform depth_to_disparity(true);
-
-			rs2::spatial_filter spat_filter;    // 3. Spatial    - edge-preserving spatial smoothing
-			rs2::temporal_filter temp_filter;   // 4. Temporal   - reduces temporal noise
-
-			rs2::disparity_transform disparity_to_depth(false); // 5. Disparity back to depth
-
-			for (auto & framePair : colorFrames)
-			{
-
-				//depthFrames[framePair.first] = dec_filter.process(depthFrames[framePair.first]); // 1
-				depthFrames[framePair.first] = depth_to_disparity.process(depthFrames[framePair.first]); // 2
-				depthFrames[framePair.first] = spat_filter.process(depthFrames[framePair.first]); // 3
-				depthFrames[framePair.first] = temp_filter.process(depthFrames[framePair.first]); // 4
-				depthFrames[framePair.first] = disparity_to_depth.process(depthFrames[framePair.first]); // 5
-
-				initialColorMats[framePair.first] = Utils::frameToMat(framePair.second).clone();
-				initialDepthMats[framePair.first] = Utils::frameToMat(depthFrames[framePair.first]).clone();
-
-				rs2::frame coloredDepth = depthFrames[framePair.first].apply_filter(color_map);
-
-				depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
-				// TODO: Comment below line and uncomment above line
-				//depthColorMappers[framePair.first] = Utils::frameToMat(framePair.second).clone();
-
-			}
-
-
-			//------------------------------------------------------------------------------
-			//------------------------- Main Loop-------------------------------------------
-			//------------------------------------------------------------------------------
-			while (cv::waitKey(1) < 0)
-			{
-				connected_devices.pollFrames();
-				auto colorFrames = connected_devices.getRGBFrames();
-
-
-
-				// Every 4 seconds, check that a person is in the room
-				if (frameCount == kFps * 4)
-				{
-
-					std::map<std::string, cv::Rect2d> personBboxes;
-
-					auto depthFrames = connected_devices.getDepthFrames();
-					bool isPersonInFrame = false;
-					for (auto & framePair : colorFrames)
-					{
-						cv::Rect2d bbox;
-						cv::Mat image = Utils::frameToMat(framePair.second).clone();
-
-						if (detector.detectPerson(image, bbox))
-						{
-							isPersonInFrame = true;
-						}
-
-						// We still want to update the person bbox for all cameras every time, because if 
-						// even one device finds a person, we want to start an activity, therefore we will preserve all potential data
-						personBboxes[framePair.first] = bbox;
-					}
-
-					// If person is detected, an "activity" is happening
-					// Several steps will occur at this point:
-					// 1. Get the initial snapshot of all objects in the room
-					// 2. Track the person that just entered
-					// 3. Get the final snapshot of all object in the room when person leaves
-					// 4. Store all data to a folder specific to this "activity" then go back to idle mode, waiting for a person
-					if (isPersonInFrame)
-					{
-						RoomActivity newActivity(
-							(connected_devices._devices.begin())->second.pipe,
-							size,
-							"KCF",
-							initialColorMats,
-							initialDepthMats,
-							depthColorMappers,
-							personBboxes,
-							calibrationMatrices,
-							mainWindow,
-							detector,
-							connected_devices,
-							leftWidthVal,
-							rightWidthVal,
-							topHeightVal,
-							bottomHeightVal,
-							cameraDistanceVal);
-					}
-					// If no person was detected, use this as an opportunity to update the current initial snapshots
-					else
-					{
-						for (auto & framePair : colorFrames)
-						{
-							//depthFrames[framePair.first] = dec_filter.process(depthFrames[framePair.first]); // 1
-							depthFrames[framePair.first] = depth_to_disparity.process(depthFrames[framePair.first]); // 2
-							depthFrames[framePair.first] = spat_filter.process(depthFrames[framePair.first]); // 3
-							depthFrames[framePair.first] = temp_filter.process(depthFrames[framePair.first]); // 4
-							depthFrames[framePair.first] = disparity_to_depth.process(depthFrames[framePair.first]); // 5
-
-							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
-							// TODO: Comment below line and uncomment above line
-							depthColorMappers[framePair.first] = Utils::frameToMat(framePair.second).clone();
-
-							initialColorMats[framePair.first] = Utils::frameToMat(framePair.second).clone();
-							initialDepthMats[framePair.first] = Utils::frameToMat(depthFrames[framePair.first]).clone();
-							rs2::frame coloredDepth = color_map.colorize(depthFrames[framePair.first]);
-
-							depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)coloredDepth.get_data(), cv::Mat::AUTO_STEP);
-							//depthColorMappers[framePair.first] = cv::Mat(size, CV_8UC3, (void*)framePair.second.get_data(), cv::Mat::AUTO_STEP);
-						}
-
-					}
-					frameCount = 0;
-				}
-				else
-				{
-					// Add some descriptions
-					cv::Mat image;
-					std::vector<cv::Mat> images;
-					for (auto & frame : colorFrames)
-					{
-						cv::Rect2d bbox;
-						cv::Mat cameraImage = Utils::frameToMat(frame.second);
-						images.push_back(cameraImage.clone());
-
-					}
-					cv::hconcat(images, image);
-
-					cv::putText(image,
-						"Idle mode",
-						cv::Point(10, 30),
-						cv::FONT_HERSHEY_SIMPLEX,
-						0.55,
-						cv::Scalar(15, 125, 255),
-						2);
-
-					cv::putText(image,
-						"Next detection in " + std::to_string((kFps * 4) - frameCount),
-						cv::Point(10, image.rows - 20),
-						cv::FONT_HERSHEY_SIMPLEX,
-						0.75,
-						cv::Scalar(255, 0, 255),
-						2);
-					cv::imshow(mainWindow, image);
-				}
-				frameCount++;
-
-			}
-
-
-		}
-		catch (const rs2::error & e)
-		{
-			std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
-			return EXIT_FAILURE;
-		}
-		catch (const std::exception& e)
-		{
-			std::cerr << e.what() << std::endl;
-			return EXIT_FAILURE;
-		}
-	}
 
 };

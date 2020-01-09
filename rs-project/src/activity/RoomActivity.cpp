@@ -1,6 +1,6 @@
 #pragma once
 #include "stdafx.h"
-#include "RoomActivity.h"
+#include "./activity/RoomActivity.h"
 #include "Utils.h"
 
 RoomActivity::RoomActivity(
@@ -134,10 +134,10 @@ RoomActivity::RoomActivity(
 	// 1. Initialize some parameters
 	// ===============================================================
 	// Create video recording
-	output_.open("./" + activityName_ + "./output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 15, cv::Size(frameSize_.width * initialColorMats.size(), frameSize_.height));
+	output_.open("./" + activityName_ + "./activityData/output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 15, cv::Size(frameSize_.width * initialColorMats.size(), frameSize_.height));
 
 	// Open the text file to which we will log the information about the detected objects
-	objectInfoFile_.open("./" + activityName_ + "./objectsInfo.txt");
+	objectInfoFile_.open("./" + activityName_ + "./activityData/objectsInfo.txt");
 
 	// Open the text file to which we will log the timestamps of the coordinate points
 	coordinateTimestampsFile_.open("./" + activityName_ + "./coordinates/timestamps.txt");
@@ -266,8 +266,8 @@ void RoomActivity::beginActivity(
 	pcl::PCLPointCloud2 roomCloud;
 	pcl::toPCLPointCloud2(*roomCloud_, roomCloud);
 
-	plyWriter.writeASCII("./" + activityName_ + "./activity.ply", outputCloud);
-	plyWriter.writeASCII("./" + activityName_ + "./room.ply", roomCloud);
+	plyWriter.writeASCII("./" + activityName_ + "./activityData/activity.ply", outputCloud);
+	plyWriter.writeASCII("./" + activityName_ + "./activityData/room.ply", roomCloud);
 
 	// Close output text files
 	objectInfoFile_.close();
@@ -585,7 +585,7 @@ void RoomActivity::initialPositionsCapture
 		}
 
 		// Store the initial RGB snapshot as an image file
-		cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "initialPositionsRGB.png", initialPositions);
+		cv::imwrite("./" + activityName_ + "/activityData/camera_" + deviceName + "_" + "initialPositionsRGB.png", initialPositions);
 
 		// Store the initial depth snapshot as an image file
 		//cv::Mat depthImage = depthColorMappers.at(deviceName).clone();
@@ -680,7 +680,7 @@ void RoomActivity::finalPositionsCapture
 		}
 
 		// Store the initial snapshot as an image file
-		cv::imwrite("./" + activityName_ + "/camera_" + deviceName + "_" + "finalPositionsRGB.png", finalPositions);
+		cv::imwrite("./" + activityName_ + "/activityData/camera_" + deviceName + "_" + "finalPositionsRGB.png", finalPositions);
 
 		// Store the initial depth snapshot as an image file
 		//cv::Mat depthImage = depthColorMappers.at(deviceName).clone();

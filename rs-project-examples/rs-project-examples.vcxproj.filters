@@ -1,0 +1,84 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\device">
+      <UniqueIdentifier>{2552b5f2-b332-4043-b426-310df35a4bae}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\detector">
+      <UniqueIdentifier>{0a5feb71-1b46-475c-8f99-a858cee11947}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\aruco">
+      <UniqueIdentifier>{623bdd3a-aab1-4c9f-bb98-b9c7ef00e99d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\device">
+      <UniqueIdentifier>{6a84b72e-94bd-49e2-97fe-5304d10f7b6a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\detector">
+      <UniqueIdentifier>{63814159-e15b-4c81-8a0f-353cc6954b25}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\aruco">
+      <UniqueIdentifier>{9ded5253-5e15-4288-9ff8-e38c05f73d16}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="rs-project-examples.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\device\DeviceWrapper.cpp">
+      <Filter>Source Files\device</Filter>
+    </ClCompile>
+    <ClCompile Include="src\detector\ObjectDetector.cpp">
+      <Filter>Source Files\detector</Filter>
+    </ClCompile>
+    <ClCompile Include="src\aruco\ArucoMarker.cpp">
+      <Filter>Source Files\aruco</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stdafx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\appconfig-parser\AppConfigParser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\device\DeviceWrapper.h">
+      <Filter>Header Files\device</Filter>
+    </ClInclude>
+    <ClInclude Include="include\detector\ObjectDetector.h">
+      <Filter>Header Files\detector</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aruco\ArucoMarker.h">
+      <Filter>Header Files\aruco</Filter>
+    </ClInclude>
+    <ClInclude Include="include\stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\DataTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ModulesFreeFunctions.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\appconfig-parser\AppConfigParser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

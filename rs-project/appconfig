@@ -1,0 +1,35 @@
+
+# IMPORTANT NOTE: There should not be any spaces after the colon separating the field name and its value
+# e.g. 	fieldName:value 	-> correct
+#		fieldName: value 	-> incorrect
+
+##########################################################################
+#
+# Full path locations to files required for YOLO darknet object detection
+#
+##########################################################################
+
+cfgFilePath:C:/Users/Jim/Documents/darknet/cfg/yolov3.cfg
+weightsFilePath:C:/Users/Jim/Documents/darknet/cfg/yolov3.weights
+namesFilePath:C:/Users/Jim/Documents/darknet/cfg/coco.names
+
+##########################################################################
+#
+# Custom specifications for chArUcoboard marker
+#
+##########################################################################
+
+charucoNumCellsX:5
+charucoNumCellsY:7
+charucoSquareLength:0.08
+charucoMarkerLength:0.048
+
+##########################################################################
+#
+# Custom specifications for certain frame counter values in application
+#
+##########################################################################
+
+idleStateRefreshFrameCounter:120
+activityStateRedetectionFrameCounter:90
+

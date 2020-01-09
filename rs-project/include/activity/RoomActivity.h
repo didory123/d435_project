@@ -94,6 +94,8 @@ private:
 	void exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::Rect2d bbox, const std::string& deviceName, const std::string& path);
 
 
+	void exportActivityResultFiles();
+
 	// Get centroid point of input pointcloud
 	pcl::PointXYZRGB getCentroidPoint(pcl_color_ptr pointCloud);
 

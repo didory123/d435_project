@@ -1,7 +1,7 @@
 #pragma once
 #include "stdafx.h"
+#include "DataTypes.h"
 #include "Utils.h"
-
 
 // Helper functions
 

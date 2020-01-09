@@ -1,7 +1,6 @@
 // rs-visualizer.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-//#include "pch.h"
 #include <vtkAutoInit.h>
 //#define vtkRenderingCore_AUTOINIT 4(vtkRenderingOpenGL, vtkInteractionStyle, vtkRenderingFreeType, vtkRenderingVolumeOpenGL)
 VTK_MODULE_INIT(vtkRenderingOpenGL);
@@ -21,7 +20,7 @@ VTK_MODULE_INIT(vtkRenderingOpenGL);
 
 void displayVisualSummary(const std::string& cloudFileName, const std::string& infoFileName)
 {
-	try
+	try 
 	{
 		pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 		pcl::PLYReader Reader;

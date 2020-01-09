@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include "./objectDetector/ObjectDetector.h"
+#include "./detector/ObjectDetector.h"
 
 using namespace cv;
 using namespace cv::dnn;

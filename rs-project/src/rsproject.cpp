@@ -216,10 +216,57 @@ int main()
 {
 	std::string userInput = "";
 
-	// Ensure that Intel depth cameras are actually connected to the computer
+	
 	try
 	{
-		rs2::device camera = DeviceWrapper::getADevice();
+		// Ensure that Intel depth cameras are actually connected to the computer
+		std::vector<rs2::device> connectedDevices = DeviceWrapper::getAllConnectedDevices();
+		if (connectedDevices.size() == 0)
+		{
+			std::cout << std::endl;
+			std::cout << "-----------------------------------" << std::endl;
+			std::cout << "No device connected, please connect a RealSense device" << std::endl;
+			rs2::error e("No device connected, please connect a RealSense device");
+			std::cout << "-----------------------------------" << std::endl;
+			std::cout << std::endl;
+
+			return 0; // terminate program early
+		}
+		else
+		{
+			std::cout << std::endl;
+			std::cout << "-----------------------------------" << std::endl;
+			std::cout << "The following devices were found: " << std::endl;
+			for (const auto& device : connectedDevices)
+			{
+				// Print the name of each connected camera
+				std::cout << device.get_info(rs2_camera_info::RS2_CAMERA_INFO_NAME) << std::endl;
+			}
+			std::cout << "-----------------------------------" << std::endl;
+			std::cout << std::endl;
+		}
+		
+		std::cout << "Input 1 for Room Activity Detection" << std::endl;
+		std::cout << "Input 2 to see list of miscellaneous modules" << std::endl;
+
+		// get user input
+		while (std::getline(std::cin, userInput))
+		{
+			if (userInput == "1")
+			{
+				roomActivitySetup();
+				break;
+			}
+			else if (userInput == "2")
+			{
+				miscellaneousModulesSelection();
+				break;
+			}
+			else
+			{
+				std::cout << "Not a valid input, please try again." << std::endl;
+			}
+		}
 	}
 	catch (const rs2::error & e)
 	{
@@ -233,28 +280,6 @@ int main()
 		std::cout << e.what() << std::endl;
 		return EXIT_FAILURE;
 	}
-	
-	std::cout << "Input 1 for Room Activity Detection" << std::endl;
-	std::cout << "Input 2 to see list of miscellaneous modules" << std::endl;
 
-	// get user input
-	while (std::getline(std::cin, userInput))
-	{
-		if (userInput == "1")
-		{
-			roomActivitySetup();
-			break;
-		}
-		else if (userInput == "2")
-		{
-			miscellaneousModulesSelection();
-			break;
-		}
-		else
-		{
-			std::cout << "Not a valid input, please try again." << std::endl;
-		}
-	}
-
-	return 0;
+	return 1;
 }

@@ -240,5 +240,5 @@ _Pvt_Extensions
 *.pcd
 *.avi
 *.weights
-**/2019*/
+activityData/
 

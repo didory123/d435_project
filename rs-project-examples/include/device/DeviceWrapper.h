@@ -15,10 +15,13 @@ class DeviceWrapper
 	};
 public:
 
-	void enableDevice(const rs2::device& dev, std::vector<stream_profile_detail> streamProfiles);
-	void removeDevices(const rs2::event_information& info);
+	// Enable a device for streaming with specific stream profile configurations
+	void enableDeviceToProfiles(const rs2::device& dev, std::vector<stream_profile_detail> streamProfiles);
+
+	// Remove all devices from the computer
+	void removeAllDevices(const rs2::event_information& info);
 	std::vector<std::pair<rs2::points, rs2::frame>> getPointClouds();
-	size_t deviceCount();
+	size_t getDevicesCount();
 	int streamCount();
 	void pollFrames();
 	std::vector<rs2::frame> getColorFrames();
@@ -27,9 +30,8 @@ public:
 	std::vector<cv::Mat> getCameraMatrices();
 	std::map<std::string, cv::Mat> getCameraMatricesMap(); // returns camera matrices in map form
 
-	// Static function to retrieve a currently connected Intel device.
-	// This is a simple function for a simple class, it'll just grab the first device on list
-	static rs2::device getADevice();
+	// Retrieve all rs2 devices that are currently connected to the computer
+	static std::vector<rs2::device> getAllConnectedDevices();
 
 	// Get depth sensor from camera
 	static rs2::sensor getDepthSensor(const rs2::device& dev);
