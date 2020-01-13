@@ -1,0 +1,37 @@
+
+########################################################################################
+# Example layout for what the roomconfig file should look like
+# To run the rs-project application with custom pre-configured room dimensions, simply run the application with the full filepath of your desired roomconfig file as an argument
+# e.g. ./rs-project "C:\Documents\bedroomconfig"
+#
+# IMPORTANT NOTE 1 : There should not be any spaces after the colon separating the field name and its value
+# e.g. 	fieldName:value 	-> correct
+#		fieldName: value 	-> incorrect
+#
+# IMPORTANT NOTE 2 : If any single one of the parameter names or values are incorrect/invalid, ALL of the parameters will be set to default as the application
+# will not be able to parse them properly. Ensure that your roomconfig file has the below setup
+#
+########################################################################################
+
+########################################################################################
+# All distances are measured in meters
+########################################################################################
+
+leftDistance:1.5
+rightDistance:1.5
+ceilingDistance:1.5
+floorDistance:1.5
+cameraDistance:1.5
+
+########################################################################################
+# Use 1, 2, 3, or 4 as the value for the frameSize parameter
+# Each value and its corresponding actual frame size (in pixels) is shown below
+# Default value is 4, or 1280px X 720px
+
+# 1 : (640x360)
+# 2 : (640x480)
+# 3 : (848x480)
+# 4 : (1280x720)
+########################################################################################
+
+frameSize:4

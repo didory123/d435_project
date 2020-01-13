@@ -33,7 +33,7 @@ rs2::sensor DeviceWrapper::getDepthSensor(const rs2::device& dev)
 void DeviceWrapper::enableDeviceToProfiles(const rs2::device& dev, std::vector<stream_profile_detail> streamProfiles)
 {
 	std::string serial_number(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-	if (_devices.find(serial_number) != _devices.end())
+	if (devices_.find(serial_number) != devices_.end())
 	{
 		return; //already in
 	}
@@ -90,19 +90,19 @@ void DeviceWrapper::enableDeviceToProfiles(const rs2::device& dev, std::vector<s
 	// Start the pipeline with the configuration
 	rs2::pipeline_profile profile = p.start(c);
 	// Hold it internally
-	_devices.emplace(serial_number, ViewPort{ {},{}, p, profile });
+	devices_.emplace(serial_number, ViewPort{ {},{}, p, profile });
 }
 
 void DeviceWrapper::removeAllDevices(const rs2::event_information& info)
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 	// Go over the list of devices and check if it was disconnected
-	auto itr = _devices.begin();
-	while (itr != _devices.end())
+	auto itr = devices_.begin();
+	while (itr != devices_.end())
 	{
 		if (info.was_removed(itr->second.profile.get_device()))
 		{
-			itr = _devices.erase(itr);
+			itr = devices_.erase(itr);
 		}
 		else
 		{
@@ -114,14 +114,14 @@ void DeviceWrapper::removeAllDevices(const rs2::event_information& info)
 size_t DeviceWrapper::getDevicesCount()
 {
 	std::lock_guard<std::mutex> lock(_mutex);
-	return _devices.size();
+	return devices_.size();
 }
 
 int DeviceWrapper::streamCount()
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 	int count = 0;
-	for (auto&& sn_to_dev : _devices)
+	for (auto&& sn_to_dev : devices_)
 	{
 		for (auto&& stream : sn_to_dev.second.frames_per_stream)
 		{
@@ -140,7 +140,7 @@ void DeviceWrapper::pollFrames()
 	rs2::align align_to_depth(RS2_STREAM_DEPTH);
 	rs2::align align_to_color(RS2_STREAM_COLOR);
 	// Go over all device
-	for (auto&& view : _devices)
+	for (auto&& view : devices_)
 	{
 		// Ask each pipeline if there are new frames available
 		rs2::frameset frameset;
@@ -186,7 +186,7 @@ std::vector<std::pair<rs2::points, rs2::frame>> DeviceWrapper::getPointClouds()
 	std::lock_guard<std::mutex> lock(_mutex);
 	std::vector<std::pair<rs2::points, rs2::frame>> pointClouds;
 	// Go over all device
-	for (auto&& view : _devices) //2
+	for (auto&& view : devices_) //2
 	{
 		/*// For each device get its frames
 		for (auto&& id_to_frame : view.second.frames_per_stream) //1?
@@ -213,7 +213,7 @@ std::vector<rs2::frame> DeviceWrapper::getColorFrames()
 	std::lock_guard<std::mutex> lock(_mutex);
 	std::vector<rs2::frame> colorFrames;
 	// Go over all device
-	for (auto&& view : _devices) //2
+	for (auto&& view : devices_) //2
 	{
 		/*// For each device get its frames
 		for (auto&& id_to_frame : view.second.frames_per_stream) //1?
@@ -241,7 +241,7 @@ std::map<std::string, rs2::frame> DeviceWrapper::getDepthFrames()
 	std::lock_guard<std::mutex> lock(_mutex);
 	std::map<std::string, rs2::frame> depthFrames;
 	// Go over all device
-	for (auto&& view : _devices) //2
+	for (auto&& view : devices_) //2
 	{
 		if (view.second.depthFrame)
 		{
@@ -257,7 +257,7 @@ std::map<std::string, rs2::frame> DeviceWrapper::getRGBFrames()
 	std::lock_guard<std::mutex> lock(_mutex);
 	std::map<std::string, rs2::frame> colorFrames;
 	// Go over all device
-	for (auto&& view : _devices) //2
+	for (auto&& view : devices_) //2
 	{
 		if (view.second.colorFrame)
 		{
@@ -274,7 +274,7 @@ std::vector<cv::Mat> DeviceWrapper::getCameraMatrices()
 	try
 	{
 		std::vector<cv::Mat> matrices;
-		for (auto d : _devices)
+		for (auto d : devices_)
 		{
 			auto stream_profiles = d.second.profile.get_streams();
 			for (rs2::stream_profile stream : stream_profiles)
@@ -307,7 +307,7 @@ std::map<std::string, cv::Mat> DeviceWrapper::getCameraMatricesMap()
 	try
 	{
 		std::map<std::string, cv::Mat> matrices;
-		for (auto d : _devices)
+		for (auto d : devices_)
 		{
 			auto stream_profiles = d.second.profile.get_streams();
 			for (rs2::stream_profile stream : stream_profiles)
@@ -332,6 +332,11 @@ std::map<std::string, cv::Mat> DeviceWrapper::getCameraMatricesMap()
 	{
 		std::cerr << "Failed to get intrinsics for the given stream. " << e.what() << std::endl;
 	}
+}
+
+rs2::pipeline & DeviceWrapper::getRealsensePipeline()
+{
+	return devices_.begin()->second.pipe;
 }
 
 /// STATIC FUNCTIONS

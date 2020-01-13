@@ -45,11 +45,4 @@
 #include "targetver.h"
 #include "DataTypes.h"
 #include "./objectDetector/ObjectDetector.h"
-
-
-// Sizes
-const cv::Size LARGEST_DIMS = cv::Size(1280, 720);
-const cv::Size LARGE_DIMS = cv::Size(848, 480);
-const cv::Size MEDIUM_DIMS = cv::Size(640, 480);
-const cv::Size SMALL_DIMS = cv::Size(640, 360);
-const cv::Size SMALLEST_DIMS = cv::Size(424, 240);
+#include "config/ConfigParser.h"

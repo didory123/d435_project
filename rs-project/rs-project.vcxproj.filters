@@ -19,11 +19,23 @@
     <Filter Include="Header Files\activity">
       <UniqueIdentifier>{91614634-dc67-44ff-b845-12dee8429ba8}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\objectDetector">
+    <Filter Include="Header Files\config">
+      <UniqueIdentifier>{f8467b4c-6f9a-461b-ab74-27a381464c45}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\config">
+      <UniqueIdentifier>{50f04ef0-4c45-452f-88a2-bc4156ea4a56}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\device">
+      <UniqueIdentifier>{c03c5624-7ac0-4e11-a50c-e78a5f6d61e8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\device">
+      <UniqueIdentifier>{3298f27d-25ab-49e6-b215-d85b18af31a5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\detector">
       <UniqueIdentifier>{13893d7b-58ee-4264-aac5-5942b54ed67f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\deviceWrapper">
-      <UniqueIdentifier>{c03c5624-7ac0-4e11-a50c-e78a5f6d61e8}</UniqueIdentifier>
+    <Filter Include="Source Files\detector">
+      <UniqueIdentifier>{fa1e68d7-84cb-49d4-8ab7-71c078dff9e9}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -39,9 +51,6 @@
     <ClInclude Include="include\targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\TestDriver.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\DataTypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -55,10 +64,19 @@
       <Filter>Header Files\activity</Filter>
     </ClInclude>
     <ClInclude Include="include\objectDetector\ObjectDetector.h">
-      <Filter>Header Files\objectDetector</Filter>
+      <Filter>Header Files\detector</Filter>
     </ClInclude>
     <ClInclude Include="include\deviceWrapper\DeviceWrapper.h">
-      <Filter>Header Files\deviceWrapper</Filter>
+      <Filter>Header Files\device</Filter>
+    </ClInclude>
+    <ClInclude Include="include\config\AppConfigParser.h">
+      <Filter>Header Files\config</Filter>
+    </ClInclude>
+    <ClInclude Include="include\config\ConfigParser.h">
+      <Filter>Header Files\config</Filter>
+    </ClInclude>
+    <ClInclude Include="include\config\RoomConfigParser.h">
+      <Filter>Header Files\config</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -71,12 +89,6 @@
     <ClCompile Include="src\stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\sensor\DeviceWrapper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\object_detection\ObjectDetector.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\Utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -85,6 +97,21 @@
     </ClCompile>
     <ClCompile Include="src\activity\RoomActivity.cpp">
       <Filter>Source Files\activity</Filter>
+    </ClCompile>
+    <ClCompile Include="src\config\AppConfigParser.cpp">
+      <Filter>Source Files\config</Filter>
+    </ClCompile>
+    <ClCompile Include="src\config\ConfigParser.cpp">
+      <Filter>Source Files\config</Filter>
+    </ClCompile>
+    <ClCompile Include="src\config\RoomConfigParser.cpp">
+      <Filter>Source Files\config</Filter>
+    </ClCompile>
+    <ClCompile Include="src\sensor\DeviceWrapper.cpp">
+      <Filter>Source Files\device</Filter>
+    </ClCompile>
+    <ClCompile Include="src\object_detection\ObjectDetector.cpp">
+      <Filter>Source Files\detector</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

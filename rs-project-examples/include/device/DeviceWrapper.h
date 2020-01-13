@@ -40,7 +40,7 @@ public:
 	// Changing some parameters in the depth table is required to get a clean point cloud object at short distances
 	// Hardcoded the parameters in the function for now
 	static void setDepthTable(rs2::device& dev);
-	std::map<std::string, ViewPort> _devices; // key is the unique serial number for a device; viewport contains device's relevant information
+	std::map<std::string, ViewPort> devices_; // key is the unique serial number for a device; viewport contains device's relevant information
 
 private:
 	const std::string _platformCameraName = "Platform Camera";

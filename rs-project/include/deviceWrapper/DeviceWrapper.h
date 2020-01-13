@@ -30,6 +30,8 @@ public:
 	std::vector<cv::Mat> getCameraMatrices();
 	std::map<std::string, cv::Mat> getCameraMatricesMap(); // returns camera matrices in map form
 
+	rs2::pipeline& getRealsensePipeline();
+
 	// Retrieve all rs2 devices that are currently connected to the computer
 	static std::vector<rs2::device> getAllConnectedDevices();
 
@@ -40,7 +42,7 @@ public:
 	// Changing some parameters in the depth table is required to get a clean point cloud object at short distances
 	// Hardcoded the parameters in the function for now
 	static void setDepthTable(rs2::device& dev);
-	std::map<std::string, ViewPort> _devices; // key is the unique serial number for a device; viewport contains device's relevant information
+	std::map<std::string, ViewPort> devices_; // key is the unique serial number for a device; viewport contains device's relevant information
 
 private:
 	const std::string _platformCameraName = "Platform Camera";

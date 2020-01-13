@@ -5,15 +5,15 @@ using namespace cv;
 using namespace cv::dnn;
 
 
-ObjectDetector::ObjectDetector(double confidence, const std::string& cfgPath, const std::string& weightsPath, const std::string& namesPath)
+ObjectDetector::ObjectDetector(yolo_files_paths yoloFilesPaths, double confidence)
 {
 	// Load the model
-	this->net_ = readNetFromDarknet(cfgPath, weightsPath);
+	this->net_ = readNetFromDarknet(yoloFilesPaths.cfgFilePath, yoloFilesPaths.weightsFilePath);
 	outNames_ = this->net_.getUnconnectedOutLayersNames();
 	this->net_.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);
 
 	// Load classes file and read them into vector
-	std::string file(DEFAULT_NAMES_PATH);
+	std::string file(yoloFilesPaths.namesFilePath);
 	std::ifstream ifs(file.c_str());
 	if (!ifs.is_open())
 		CV_Error(Error::StsError, "File " + file + " not found");
@@ -347,6 +347,11 @@ cv::Mat ObjectDetector::detectAllObjects(cv::Mat image, std::map<std::string, cv
 		objects[objectName] = box; // add object to map
 	}
 	return image;
+}
+
+void ObjectDetector::setConfidence(double confidence)
+{
+	confidence_ = confidence;
 }
 
 void ObjectDetector::drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat& frame)

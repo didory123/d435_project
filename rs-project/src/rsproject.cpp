@@ -3,7 +3,9 @@
 // Simple console app for detecting markers from real-time frames from the Intel Realsense D435 camera
 //
 #include "stdafx.h"
-#include "TestDriver.hpp"
+#include "config/AppConfigParser.h"
+#include "config/RoomConfigParser.h"
+#include "activity/RoomActivityUserInterface.h"
 
 // Simple IO function that parses the user's desired size (resolution) for video frames
 cv::Size getFrameSizeFromUser()
@@ -40,8 +42,9 @@ cv::Size getFrameSizeFromUser()
 }
 
 // Simple IO function that walks the user through inputting the specific dimensions of the room
-void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float& topHeightVal, float& bottomHeightVal, float& cameraDistanceVal)
+room_activity_dimensions getRoomDimensionsFromUser()
 {
+	room_activity_dimensions dimensions;
 	std::string userInput = "";
 	std::cout << "Input the distance from the left wall of the room to the marker 0-axis in meters" << std::endl;
 	// Input room width
@@ -49,7 +52,7 @@ void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float&
 	{
 		try
 		{
-			leftWidthVal = std::stof(userInput);
+			dimensions.leftDistance = std::stof(userInput);
 			break;
 		}
 		catch (const std::exception & e)
@@ -64,7 +67,7 @@ void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float&
 	{
 		try
 		{
-			rightWidthVal = std::stof(userInput);
+			dimensions.rightDistance = std::stof(userInput);
 			break;
 		}
 		catch (const std::exception & e)
@@ -79,7 +82,7 @@ void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float&
 	{
 		try
 		{
-			topHeightVal = std::stof(userInput);
+			dimensions.ceilingDistance = std::stof(userInput);
 			break;
 		}
 		catch (const std::exception & e)
@@ -94,7 +97,7 @@ void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float&
 	{
 		try
 		{
-			bottomHeightVal = std::stof(userInput);
+			dimensions.floorDistance = std::stof(userInput);
 			break;
 		}
 		catch (const std::exception & e)
@@ -120,7 +123,7 @@ void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float&
 	{
 		try
 		{
-			cameraDistanceVal = std::stof(userInput);
+			dimensions.cameraDistance = std::stof(userInput);
 			break;
 		}
 		catch (const std::exception & e)
@@ -128,95 +131,37 @@ void getRoomDimensionsFromUser(float& leftWidthVal, float& rightWidthVal, float&
 			std::cout << "Not a valid input, please try again." << std::endl;
 		}
 	}
+
+	dimensions.frameSize = getFrameSizeFromUser();
+
+	return dimensions;
 }
 
-// Parse and run the desired miscellaneous module based on the user's input
-bool runSpecifiedMiscModule(const std::string& testCode)
+room_activity_dimensions getRoomDimensionsFromInputFile(const std::string& roomConfigFilePath)
 {
-	if (testCode == "1")
-	{
-		TestDriver::arucoTest();
-	}
-	else if (testCode == "2")
-	{
-		TestDriver::pointCloudExportTest();
-	}
-	else if (testCode == "3")
-	{
-		TestDriver::pointCloudVisualize();
-	}
-	else if (testCode == "4")
-	{
-		TestDriver::multiCamVisualize();
-	}
-	else if (testCode == "5")
-	{
-		TestDriver::project3DMultiple();
-	}
-	else if (testCode == "6")
-	{
-		TestDriver::objectDetection();
-	}
-	else if (testCode == "7")
-	{
-		TestDriver::objectTracking();
-	}
-	else
-	{
-		return false;
-	}
-	return true;
-}
+	RoomConfigParser roomConfigParser;
+	roomConfigParser.parseConfigFile(roomConfigFilePath);
 
-// Get required setup information from the user before starting the room activity application
-int roomActivitySetup()
-{
-	std::string userInput = "";
+	// get the room dimension properties from the specified pre-configured input file
+	auto d = roomConfigParser.getRoomActivityDimensions();
+
+	// If the returned struct is null, means that the file was invalid and an error occurred while parsing
+	// Go to manual input from user
+	if (d == nullptr)
+	{
+		std::cout << "Room pre-configuration file was invalid, require manual input. Please fill in the following information:" << std::endl;
+		return getRoomDimensionsFromUser();
+	}
+
+	return *d;
 	
-	// Get the dimensions of the room from the user's input
-	float leftWidthVal = 0, rightWidthVal = 0, topHeightVal = 0, bottomHeightVal = 0, cameraDistanceVal = 0;
-	getRoomDimensionsFromUser(leftWidthVal, rightWidthVal, topHeightVal, bottomHeightVal, cameraDistanceVal);
-
-	// Get the desired size of the video frames from the user
-	cv::Size frameSize = getFrameSizeFromUser();
-
-	return TestDriver::roomActivityVisualize(leftWidthVal, rightWidthVal, topHeightVal, bottomHeightVal, cameraDistanceVal, frameSize);
-}
-
-void miscellaneousModulesSelection()
-{
-	std::string userInput = "";
-	std::cout << "Input 1 for AruCo test program" << std::endl;
-	std::cout << "Input 2 to test exporting pointcloud of a frame to .ply file" << std::endl;
-	std::cout << "Input 3 to test pointcloud visualization" << std::endl;
-	std::cout << "Input 4 to test multi-camera pointcloud visualization" << std::endl;
-	std::cout << "Input 5 to test mapping multiple, 3D pointclouds to real world coordinates" << std::endl;
-	std::cout << "Input 6 to test real-time YOLO object detection" << std::endl;
-	std::cout << "Input 7 to test object tracking" << std::endl;
-	std::cout << "Input 8 to test multicamera automatic person tracking" << std::endl;
-	std::cout << "Input 9 to test automatic person tracking" << std::endl;
-
-	// get user input
-	while (std::getline(std::cin, userInput))
-	{
-		// Run the specified miscellaneous module
-		if (runSpecifiedMiscModule(userInput))
-		{
-			break;
-		}
-		else
-		{
-			std::cout << "Not a valid input, please try again." << std::endl;
-		}
-	}
 }
 
 // main program entry
-int main()
+int main(int argc, char** argv)
 {
 	std::string userInput = "";
 
-	
 	try
 	{
 		// Ensure that Intel depth cameras are actually connected to the computer
@@ -246,27 +191,40 @@ int main()
 			std::cout << std::endl;
 		}
 		
-		std::cout << "Input 1 for Room Activity Detection" << std::endl;
-		std::cout << "Input 2 to see list of miscellaneous modules" << std::endl;
+		std::cout << "Beginning setup for autonomous activity recording." << std::endl;
+		std::cout << std::endl;
 
-		// get user input
-		while (std::getline(std::cin, userInput))
+		room_activity_dimensions dimensions;
+		
+		//-------------------------------------------
+		// Room config
+		//-------------------------------------------
+
+		if (argc > 1) // If the user has specified a file path for a preconfigured room settings file
 		{
-			if (userInput == "1")
-			{
-				roomActivitySetup();
-				break;
-			}
-			else if (userInput == "2")
-			{
-				miscellaneousModulesSelection();
-				break;
-			}
-			else
-			{
-				std::cout << "Not a valid input, please try again." << std::endl;
-			}
+			dimensions = getRoomDimensionsFromInputFile(argv[1]);
 		}
+		else // otherwise go to manual input
+		{
+			std::cout << "Room pre-configuration file not found, require manual input. Please fill in the following information:" << std::endl;
+			dimensions = getRoomDimensionsFromUser();
+		}
+
+		const std::string APP_CONFIG_FILE_NAME = "appconfig";
+
+		//-------------------------------------------
+		// Appconfig file parsing
+		//-------------------------------------------
+
+		AppConfigParser appConfigParser;
+		appConfigParser.parseConfigFile(APP_CONFIG_FILE_NAME);
+		auto charucoSettings = appConfigParser.getCharucoDimensions();
+		auto yoloFilePaths = appConfigParser.getYOLOFilePaths();
+	
+		// Begin Room Activity
+		RoomActivityUserInterface activityUserInterface(dimensions, charucoSettings, yoloFilePaths);
+		activityUserInterface.beginRoomActivitySession();
+
 	}
 	catch (const rs2::error & e)
 	{

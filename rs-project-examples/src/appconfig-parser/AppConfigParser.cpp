@@ -17,16 +17,16 @@ void AppConfigParser::assignValueToField(const std::string& value, const std::st
 {
 	if (field == CFG_FILE_PATH)
 	{
-		filePaths.cfgFilePath = value;
+		filePaths_.cfgFilePath = value;
 	}
 	else if (field == WEIGHTS_FILE_PATH)
 	{
-		filePaths.weightsFilePath = value;
+		filePaths_.weightsFilePath = value;
 	}
 	else if (field == NAMES_FILE_PATH)
 	{
-		filePaths.namesFilePath = value;
-	}
+		filePaths_.namesFilePath = value;
+	}aw xssssssssss1
 	else
 	{
 		std::cout << "Unrecognized field name; please check that the appConfig file is configured properly" << std::endl;

@@ -4,8 +4,6 @@
 #include "Utils.h"
 
 RoomActivity::RoomActivity(
-	rs2::pipeline& pipe,
-	cv::Size frameSize,
 	const std::string& trackerType,
 	std::map<std::string, cv::Mat> initialColorMats,
 	std::map<std::string, cv::Mat> initialDepthMats,
@@ -15,25 +13,23 @@ RoomActivity::RoomActivity(
 	const std::string& windowName,
 	ObjectDetector& detector,
 	DeviceWrapper& deviceWrapper,
-	float leftWidth,
-	float rightWidth,
-	float topHeight,
-	float bottomHeight,
-	float cameraDistance
+	room_activity_dimensions dimensions
 ) 
 	:
-	leftWidth_(leftWidth),
-	rightWidth_(rightWidth),
-	topHeight_(topHeight),
-	bottomHeight_(bottomHeight),
-	cameraDistance_(cameraDistance),
 	finalOutputCloud_(new pcl::PointCloud<pcl::PointXYZRGB>),
 	roomCloud_(new pcl::PointCloud<pcl::PointXYZRGB>)
 {
-	pipe_ = &pipe; // Any pipe from any device will do, since they should all have the same stream profile
+	leftWidth_ = dimensions.leftDistance;
+	rightWidth_ = dimensions.rightDistance;
+	topHeight_ = dimensions.ceilingDistance;
+	bottomHeight_ = dimensions.floorDistance;
+	cameraDistance_ = dimensions.cameraDistance;
+
+	frameSize_ = dimensions.frameSize;
+
+	pipe_ = &deviceWrapper.getRealsensePipeline(); // Any pipe from any device will do, since they should all have the same stream profile
 	deviceWrapper_ = &deviceWrapper;
 	calibrationMatrices_ = calibrationMatrices;
-	frameSize_ = frameSize;
 	windowName_ = windowName;
 
 	// Get current time (the start time of the activity will be its name)
@@ -719,7 +715,7 @@ void RoomActivity::addToFinalOutputCloud
 
 	pcl_color_ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-	*pointCloud = *Utils::depthMatToColorPCL(depthMat.clone(), depthMat.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+	*pointCloud = *Utils::depthMatToColorPCL(depthMat.clone(), depthMat.clone(), (deviceWrapper_->devices_[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 	// IMPORTANT: We must get the minimum and maximum points before we apply the calibration matrix operations
 	// Otherwise, the min/max points will be scaled to the ROOM dimensions, but what we want is the actual min/max points of the object dimensions
@@ -874,7 +870,7 @@ void RoomActivity::recordCoordinate
 
 		std::cout << "Point cloud for : " << deviceName << std::endl;
 
-		*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthData.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+		*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthData.clone(), (deviceWrapper_->devices_[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 		// Apply transformation to the pointcloud based on device's position in the real world
 		currPointCloud = Utils::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());
@@ -1039,7 +1035,7 @@ void RoomActivity::exportMergedCloud
 
 			std::cout << "Point cloud for : " << deviceName << std::endl;
 
-			*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (deviceWrapper_->_devices[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
+			*currPointCloud = *Utils::depthMatToColorPCL(depthData.clone(), depthColorMapper.clone(), (deviceWrapper_->devices_[deviceName].profile.get_stream(RS2_STREAM_COLOR)).as<rs2::video_stream_profile>(), bboxToFitInMat);
 
 			// Apply transformation to the pointcloud based on device's position in the real world
 			currPointCloud = Utils::affineTransformMatrix(currPointCloud, calibrationMatrices_[deviceName].inverse());

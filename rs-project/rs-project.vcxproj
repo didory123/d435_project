@@ -80,18 +80,23 @@
   <ItemGroup>
     <ClInclude Include="include\activity\RoomActivity.h" />
     <ClInclude Include="include\activity\RoomActivityUserInterface.h" />
+    <ClInclude Include="include\config\AppConfigParser.h" />
+    <ClInclude Include="include\config\ConfigParser.h" />
+    <ClInclude Include="include\config\RoomConfigParser.h" />
     <ClInclude Include="include\DataTypes.h" />
     <ClInclude Include="include\deviceWrapper\DeviceWrapper.h" />
     <ClInclude Include="include\Marker.h" />
     <ClInclude Include="include\objectDetector\ObjectDetector.h" />
     <ClInclude Include="include\stdafx.h" />
     <ClInclude Include="include\targetver.h" />
-    <ClInclude Include="include\TestDriver.hpp" />
     <ClInclude Include="include\Utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\activity\RoomActivity.cpp" />
     <ClCompile Include="src\activity\RoomActivityUserInterface.cpp" />
+    <ClCompile Include="src\config\AppConfigParser.cpp" />
+    <ClCompile Include="src\config\ConfigParser.cpp" />
+    <ClCompile Include="src\config\RoomConfigParser.cpp" />
     <ClCompile Include="src\object_detection\ObjectDetector.cpp" />
     <ClCompile Include="src\aruco\Marker.cpp" />
     <ClCompile Include="src\rsproject.cpp" />

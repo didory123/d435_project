@@ -7,8 +7,6 @@ public:
 	RoomActivity();
 
 	RoomActivity(
-		rs2::pipeline& pipe,
-		cv::Size frameSize,
 		const std::string& trackerType,
 		std::map<std::string, cv::Mat> initialColorMats,
 		std::map<std::string, cv::Mat> initialDepthMats,
@@ -18,11 +16,7 @@ public:
 		const std::string& windowName,
 		ObjectDetector& detector,
 		DeviceWrapper& deviceWrapper,
-		float leftWidth,
-		float rightWidth,
-		float topHeight,
-		float bottomHeight,
-		float cameraDistance
+		room_activity_dimensions dimensions
 	);
 
 	~RoomActivity() 

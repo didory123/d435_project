@@ -26,5 +26,5 @@ private:
 	const std::string CHARUCO_SQUARE_LENGTH = "charucoSquareLength";
 	const std::string CHARUCO_MARKER_LENGTH = "charucoMarkerLength";
 
-	yolo_files_paths filePaths;
+	yolo_files_paths filePaths_;
 };
