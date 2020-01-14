@@ -8,11 +8,13 @@ RoomActivityUserInterface::RoomActivityUserInterface
 (
 	room_activity_dimensions roomActivityDimensions,
 	charuco_dimensions charucoSettings,
-	yolo_files_paths yoloFilesPaths
+	yolo_files_paths yoloFilesPaths,
+	room_activity_settings roomActivitySettings
 ) :
 	roomActivityDimensions_(roomActivityDimensions),
 	charucoSettings_(charucoSettings),
-	yoloFilesPaths_(yoloFilesPaths)
+	yoloFilesPaths_(yoloFilesPaths),
+	roomActivitySettings_(roomActivitySettings)
 {
 	frameSize_ = roomActivityDimensions.frameSize;
 	detector_ = new ObjectDetector(yoloFilesPaths, 0.5);
@@ -222,8 +224,8 @@ void RoomActivityUserInterface::runMainRoomActivityLoop()
 		connectedDevices_.pollFrames();
 		auto colorFrames = connectedDevices_.getRGBFrames();
 
-		// Every 4 seconds, check that a person is in the room
-		if (frameCount == FRAMES_PER_SECOND * 4)
+		// Every user-specified number of frames, check that a person is in the room
+		if (frameCount == roomActivitySettings_.idleStateRefreshFrameCounter)
 		{
 
 			std::map<std::string, cv::Rect2d> personBboxes;
@@ -263,7 +265,8 @@ void RoomActivityUserInterface::runMainRoomActivityLoop()
 					mainWindow_,
 					*detector_,
 					connectedDevices_,
-					roomActivityDimensions_
+					roomActivityDimensions_,
+					roomActivitySettings_
 				);
 			}
 			// If no person was detected, use this as an opportunity to update the current initial snapshots
@@ -296,7 +299,7 @@ void RoomActivityUserInterface::runMainRoomActivityLoop()
 				2);
 
 			cv::putText(image,
-				"Next detection in " + std::to_string((FRAMES_PER_SECOND * 4) - frameCount),
+				"Next detection in " + std::to_string(roomActivitySettings_.idleStateRefreshFrameCounter - frameCount),
 				cv::Point(10, image.rows - 20),
 				cv::FONT_HERSHEY_SIMPLEX,
 				0.75,

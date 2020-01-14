@@ -8,7 +8,8 @@ public:
 	(
 		room_activity_dimensions roomActivityDimensions,
 		charuco_dimensions charucoSettings,
-		yolo_files_paths yoloFilesPaths
+		yolo_files_paths yoloFilesPaths,
+		room_activity_settings roomActivitySettings
 	);
 
 	~RoomActivityUserInterface()
@@ -37,6 +38,7 @@ private:
 	room_activity_dimensions roomActivityDimensions_;
 	charuco_dimensions charucoSettings_;
 	yolo_files_paths yoloFilesPaths_;
+	room_activity_settings roomActivitySettings_;
 
 	ObjectDetector * detector_;
 

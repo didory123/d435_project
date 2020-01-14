@@ -13,19 +13,27 @@ RoomActivity::RoomActivity(
 	const std::string& windowName,
 	ObjectDetector& detector,
 	DeviceWrapper& deviceWrapper,
-	room_activity_dimensions dimensions
+	room_activity_dimensions dimensions,
+	room_activity_settings settings
 ) 
 	:
 	finalOutputCloud_(new pcl::PointCloud<pcl::PointXYZRGB>),
 	roomCloud_(new pcl::PointCloud<pcl::PointXYZRGB>)
 {
+	// Initialize room dimensions
 	leftWidth_ = dimensions.leftDistance;
 	rightWidth_ = dimensions.rightDistance;
 	topHeight_ = dimensions.ceilingDistance;
 	bottomHeight_ = dimensions.floorDistance;
 	cameraDistance_ = dimensions.cameraDistance;
 
+	// Get frame size
 	frameSize_ = dimensions.frameSize;
+
+	// Get specific parameter values
+	activityStateRedetectionFrameCounter_ = settings.activityStateRedetectionFrameCounter;
+	exitActivityPersonMissingFrameCounter_ = settings.exitActivityPersonMissingFrameCounter;
+	recordPersonCoordinateFrameCounter_ = settings.recordPersonCoordinateFrameCounter;
 
 	pipe_ = &deviceWrapper.getRealsensePipeline(); // Any pipe from any device will do, since they should all have the same stream profile
 	deviceWrapper_ = &deviceWrapper;
@@ -46,10 +54,10 @@ RoomActivity::RoomActivity(
 	activityName_ = activityTime;
 
 	// Create a folder to store all the test results data
-	boost::filesystem::create_directory(activityName_);
+	boost::filesystem::create_directory("./activityData/" + activityName_);
 
 	// Create directory containing pointcloud coordinates of person
-	boost::filesystem::create_directory("./" + activityName_ + "/coordinates/");
+	boost::filesystem::create_directory("./activityData/" + activityName_ + "/coordinates/");
 
 	// Initialize tracker object
 	trackerType_ = trackerType;
@@ -130,13 +138,13 @@ RoomActivity::RoomActivity(
 	// 1. Initialize some parameters
 	// ===============================================================
 	// Create video recording
-	output_.open("./" + activityName_ + "./activityData/output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 15, cv::Size(frameSize_.width * initialColorMats.size(), frameSize_.height));
+	output_.open("./activityData/" + activityName_ + "./output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 15, cv::Size(frameSize_.width * initialColorMats.size(), frameSize_.height));
 
 	// Open the text file to which we will log the information about the detected objects
-	objectInfoFile_.open("./" + activityName_ + "./activityData/objectsInfo.txt");
+	objectInfoFile_.open("./activityData/" + activityName_ + "./objectsInfo.txt");
 
 	// Open the text file to which we will log the timestamps of the coordinate points
-	coordinateTimestampsFile_.open("./" + activityName_ + "./coordinates/timestamps.txt");
+	coordinateTimestampsFile_.open("./activityData/" + activityName_ + "./coordinates/timestamps.txt");
 
 	// Initialize tracker object
 	for (auto& bbox : personBboxes)
@@ -262,8 +270,8 @@ void RoomActivity::beginActivity(
 	pcl::PCLPointCloud2 roomCloud;
 	pcl::toPCLPointCloud2(*roomCloud_, roomCloud);
 
-	plyWriter.writeASCII("./" + activityName_ + "./activityData/activity.ply", outputCloud);
-	plyWriter.writeASCII("./" + activityName_ + "./activityData/room.ply", roomCloud);
+	plyWriter.writeASCII("./activityData/" + activityName_ + "./activity.ply", outputCloud);
+	plyWriter.writeASCII("./activityData/" + activityName_ + "./room.ply", roomCloud);
 
 	// Close output text files
 	objectInfoFile_.close();
@@ -279,14 +287,12 @@ void RoomActivity::beginActivity(
 void RoomActivity::start()
 {
 
-
-	bool wasPersonInFrameLast = false;
-
 	// keeps track of how many frames have passed where a person wasn't found
 	int personMissingCounter = 0;
 
+	// Frame count before performing redetection
 	// Initialize this to 90 so that the object detection occurs at the very beginning
-	int frameCount = 90;
+	int frameCount = activityStateRedetectionFrameCounter_;
 
 	rs2::colorizer colorMapper;
 
@@ -299,7 +305,8 @@ void RoomActivity::start()
 		auto colorFrames = deviceWrapper_->getRGBFrames();
 		auto depthFrames = deviceWrapper_->getDepthFrames();
 
-		bool isPersonInFrame = false;
+		// Initialize to falsr at the beginning of every loop to make our bitwise OR logic work
+		bool isPersonInFrame = false; 
 
 		// Create map of output images that we'll be storing the result frames in (after processing)
 		std::map<std::string, cv::Mat> outputImages, depthMats, depthColorMats;
@@ -327,12 +334,11 @@ void RoomActivity::start()
 
 
 			// if 90 frames has passed, run detection
-			if (frameCount == 90)
+			if (frameCount == activityStateRedetectionFrameCounter_)
 			{
-				lock_.lock();
+
 				// Bitwise OR here, because we want to continue activity if person is found in at least one camera
 				isPersonInFrame = isPersonInFrame | detector_->detectPerson(image, bbox[deviceName]);
-				lock_.unlock();
 
 				if (isPersonInFrame)
 				{
@@ -346,11 +352,13 @@ void RoomActivity::start()
 				}
 				else
 				{
-					trackers_[deviceName]->clear(); // remove previous box that we were tracking
+					trackers_.erase(deviceName);
+					//bbox.erase(deviceName); // remove the previous bbox that we were tracking
+					//trackers_[deviceName]->clear(); // remove previous tracking box that we were tracking
 				}
 			}
-			// otherwise, simply track the person
-			else if (!trackers_[deviceName]->empty())
+			// otherwise, simply track the person; make sure that the tracker exists
+			else if (trackers_.find(deviceName) != trackers_.end())//!trackers_[deviceName]->empty())
 			{
 				// Bitwise OR here, because we want to continue activity if person is found in at least one camera
 				isPersonInFrame = isPersonInFrame | trackers_[deviceName]->update(image, bbox[deviceName]);
@@ -360,8 +368,12 @@ void RoomActivity::start()
 
 			if (isPersonInFrame)
 			{
-				// Tracking success : Draw the tracked object
-				rectangle(image, bbox[deviceName], cv::Scalar(255, 0, 0), 2, 1);
+				//if (bbox.find(deviceName) != bbox.end())
+				//{
+					// Tracking success : Draw the tracked object
+					rectangle(image, bbox[deviceName], cv::Scalar(255, 0, 0), 2, 1);
+				//}
+
 			}
 
 			bboxes[deviceName] = bbox[deviceName];
@@ -371,7 +383,7 @@ void RoomActivity::start()
 		}
 
 		// Record coordinates
-		if (frameCount % 15 == 0 && isPersonInFrame)
+		if (frameCount % recordPersonCoordinateFrameCounter_ == 0 && isPersonInFrame)
 		{
 			
 			// Run the filters
@@ -437,7 +449,7 @@ void RoomActivity::start()
 			);*/
 		}
 
-		if (frameCount == 90)
+		if (frameCount == activityStateRedetectionFrameCounter_)
 		{
 			frameCount = 0;
 		}
@@ -510,8 +522,8 @@ void RoomActivity::start()
 
 		cv::imshow(windowName_, image);
 
-		// if 120 frames (or 4 seconds) have passed since a person was not found in the frame, auto exit
-		if (personMissingCounter > 90)
+		// if a certain amount of time has passed before the person is detected again, exit the application
+		if (personMissingCounter > exitActivityPersonMissingFrameCounter_)
 		{
 			break;
 		}
@@ -581,7 +593,7 @@ void RoomActivity::initialPositionsCapture
 		}
 
 		// Store the initial RGB snapshot as an image file
-		cv::imwrite("./" + activityName_ + "/activityData/camera_" + deviceName + "_" + "initialPositionsRGB.png", initialPositions);
+		cv::imwrite("./activityData/" + activityName_ + "/camera_" + deviceName + "_" + "initialPositionsRGB.png", initialPositions);
 
 		// Store the initial depth snapshot as an image file
 		//cv::Mat depthImage = depthColorMappers.at(deviceName).clone();
@@ -676,7 +688,7 @@ void RoomActivity::finalPositionsCapture
 		}
 
 		// Store the initial snapshot as an image file
-		cv::imwrite("./" + activityName_ + "/activityData/camera_" + deviceName + "_" + "finalPositionsRGB.png", finalPositions);
+		cv::imwrite("./activityData/" + activityName_ + "/camera_" + deviceName + "_" + "finalPositionsRGB.png", finalPositions);
 
 		// Store the initial depth snapshot as an image file
 		//cv::Mat depthImage = depthColorMappers.at(deviceName).clone();

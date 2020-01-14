@@ -56,6 +56,8 @@ struct room_activity_settings
 {
 	int idleStateRefreshFrameCounter;
 	int activityStateRedetectionFrameCounter;
+	int exitActivityPersonMissingFrameCounter;
+	int recordPersonCoordinateFrameCounter;
 	double objectDetectionThreshold;
 };
 

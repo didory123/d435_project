@@ -16,7 +16,8 @@ public:
 		const std::string& windowName,
 		ObjectDetector& detector,
 		DeviceWrapper& deviceWrapper,
-		room_activity_dimensions dimensions
+		room_activity_dimensions dimensions,
+		room_activity_settings settings
 	);
 
 	~RoomActivity() 
@@ -33,6 +34,10 @@ private:
 	std::map<std::string, cv::Rect2d> finalDetectedObjects_;
 	ObjectDetector * detector_;
 	cv::VideoWriter output_;
+
+	int activityStateRedetectionFrameCounter_ = 90;
+	int exitActivityPersonMissingFrameCounter_ = 120;
+	int recordPersonCoordinateFrameCounter_ = 15;
 
 	std::string trackerType_ = "";
 	std::mutex lock_;
@@ -65,10 +70,8 @@ private:
 	std::map<std::string, std::map<std::string, cv::Rect2d>> finalDetectedObjectsPerDevice_;
 
 	std::set<std::string> allInitialObjects_;
-
 	std::map<std::string, std::vector<object_info>> detectedObjectsInFinalPointCloud_;
 	
-
 	std::map<std::string, color_map> objectToColorMap_; // maps each unique object to a different color
 	std::queue<color_map> colorQueue_; // queue of different colors, when next object is being drawn use this queue to determine what color to use
 
@@ -86,9 +89,6 @@ private:
 	//void initialCapture(cv::Mat initialColorMat, cv::Mat initialDepthMat, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
 	//void finalCapture(cv::Mat finalSnapshotColor, cv::Mat finalSnapshotDepth, cv::Mat depthColorMapper, bool exportCloud, std::string deviceName, std::string pathToPLY, std::string pathToPNG);
 	void exportCloud(cv::Mat depthData, cv::Mat depthColorMapper, cv::Rect2d bbox, const std::string& deviceName, const std::string& path);
-
-
-	void exportActivityResultFiles();
 
 	// Get centroid point of input pointcloud
 	pcl::PointXYZRGB getCentroidPoint(pcl_color_ptr pointCloud);
@@ -145,8 +145,5 @@ private:
 		const std::string& objectName
 	);
 
-	// Process a captured rgbFrame and depth frame (detect and track)
-	// Output: returns the output RGB image with everything drawn on it
-	// return: whether a person was found in the image or not
-	/*void processFrame(cv::Mat rgbMat, cv::Mat depthMat, cv::Mat depthColor, std::string& deviceName, int& frameCount, cv::Mat& output, bool& isPersonInFrame);*/
+	
 };

@@ -30,6 +30,8 @@ charucoMarkerLength:0.048
 #
 ##########################################################################
 
-# idleStateRefreshFrameCounter:120
-# activityStateRedetectionFrameCounter:90
-# objectDetectionThreshold:0.5
+idleStateRefreshFrameCounter:10
+activityStateRedetectionFrameCounter:60
+exitActivityPersonMissingFrameCounter:120
+recordPersonCoordinateFrameCounter:15
+objectDetectionThreshold:0.5

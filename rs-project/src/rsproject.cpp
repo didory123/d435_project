@@ -181,11 +181,11 @@ int main(int argc, char** argv)
 		{
 			std::cout << std::endl;
 			std::cout << "-----------------------------------" << std::endl;
-			std::cout << "The following devices were found: " << std::endl;
+			std::cout << "The following devices were found: " << std::endl << std::endl;
 			for (const auto& device : connectedDevices)
 			{
 				// Print the name of each connected camera
-				std::cout << device.get_info(rs2_camera_info::RS2_CAMERA_INFO_NAME) << std::endl;
+				std::cout << device.get_info(rs2_camera_info::RS2_CAMERA_INFO_NAME) << " - " << device.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
 			}
 			std::cout << "-----------------------------------" << std::endl;
 			std::cout << std::endl;
@@ -193,6 +193,12 @@ int main(int argc, char** argv)
 		
 		std::cout << "Beginning setup for autonomous activity recording." << std::endl;
 		std::cout << std::endl;
+
+		// If the activityData directory doesn't exist, create one
+		if (!boost::filesystem::exists("./activityData"))
+		{
+			boost::filesystem::create_directory("./activityData/");
+		}
 
 		room_activity_dimensions dimensions;
 		
@@ -220,9 +226,9 @@ int main(int argc, char** argv)
 		appConfigParser.parseConfigFile(APP_CONFIG_FILE_NAME);
 		auto charucoSettings = appConfigParser.getCharucoDimensions();
 		auto yoloFilePaths = appConfigParser.getYOLOFilePaths();
-	
+		auto roomActivitySettings = appConfigParser.getRoomActivitySettings();
 		// Begin Room Activity
-		RoomActivityUserInterface activityUserInterface(dimensions, charucoSettings, yoloFilePaths);
+		RoomActivityUserInterface activityUserInterface(dimensions, charucoSettings, yoloFilePaths, roomActivitySettings);
 		activityUserInterface.beginRoomActivitySession();
 
 	}
